@@ -3,7 +3,7 @@
 Strona do nauki mety GeoGuessr po polsku, wygodna na telefonie i komputerze.
 
 ## Co jest w środku
-- **Kraje** — 79 krajów z oficjalnym pokryciem: tablice, słupki, linie, język/pismo, znaki, kamera Google, krajobraz, wskazówki. Wyszukiwarka (np. „snorkel”, „żółte”, „ř”), filtry regionu i strony ruchu, oznaczanie krajów jako opanowane.
+- **Kraje** — 127 krajów i terytoriów (100 głównych) — ponad 2100 wskazówek: kamera Google, tablice, słupki, linie, znaki, język, słupy, przyroda, architektura. Wyszukiwarka (np. „snorkel”, „żółte”, „ř”), filtry regionu i strony ruchu, oznaczanie krajów jako opanowane.
 - **Porównaj** — jedna kategoria (np. słupki albo tablice) obok siebie dla wszystkich krajów.
 - **Poradniki** — plan rundy, ruch lewostronny, żółte linie, kolory tablic, ALTO/PARE, generacje kamer, cyrylica, litery łacinki, linki do Plonk It / GeoHints / geotips / LearnableMeta.
 - **Fiszki** — system Leitnera (karty, których nie znasz, wracają częściej), swipe na telefonie, skróty klawiszowe (Spacja, 1, 2).
@@ -18,6 +18,6 @@ python3 -m http.server
 **GitHub Pages:** Settings → Pages → Deploy from branch → wybierz gałąź i folder `/ (root)`.
 
 ## Edycja treści
-Cała meta jest w `js/data.js` (`COUNTRIES` i `GUIDES`) — dodanie kraju to dopisanie jednego obiektu.
+Kraje: `js/countries.js` (opracowane po polsku z Plonk It + Geometas). Poradniki: `js/guides.js`.
 
-Meta pochodzi z wiedzy społeczności (Plonk It, GeoHints, geotips.net, LearnableMeta). Google zmienia pokrycie, więc część wskazówek może się zestarzeć.
+Źródła: Plonk It, Geometas, GeoHints, blog „GeoGuessr – The Top Tips, Tricks and Techniques”. Google zmienia pokrycie, więc część wskazówek może się zestarzeć.

@@ -289,7 +289,8 @@ select:focus { outline: 2px solid var(--accent); }
   .tabs a.active .ti { transform: translateY(-2px) scale(1.1); }
   main { padding: 12px 14px 24px; }
   .hero { padding: 20px 18px; border-radius: 18px; }
-  .hero p { font-size: .92rem; }
+  .hero p { display: none; }
+  .hero h1 { font-size: 1.35rem; margin-bottom: 12px; }
   .cgrid { grid-template-columns: 1fr 1fr; gap: 10px; }
   .ccard { padding: 12px; gap: 6px; }
   .ccard-head { flex-direction: column; align-items: flex-start; gap: 8px; }

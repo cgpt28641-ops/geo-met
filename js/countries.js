@@ -4659,31 +4659,59 @@ window.COUNTRIES = [
   "phone": "+351",
   "diff": 1,
   "minor": false,
-  "summary": "Portugalię zdradzają tablice z żółtym pionowym paskiem po prawej stronie; na Azorach dodatkowo murki z wulkanicznych kamieni, hortensje i japońskie cedry wśród falistych pastwisk.",
+  "summary": "Portugalię zdradzają tablice z żółtym paskiem po prawej, czarne szewrony z żółtymi strzałkami i słupy-drabinki z wysokimi szczeblami wśród eukaliptusów.",
   "clues": {
+   "kamera": [
+    "Pokrycie gen. 4 „smallcam”: kamera niżej, duże okrągłe rozmycie z małym występem z przodu, czasem całkiem przezroczyste",
+    "Na Maderze: bywa słabej jakości „shitcam” – szerokie okrągłe rozmycie, ponury obraz i często widoczny tył białego auta"
+   ],
    "tablice": [
-    "Tablice z niebieskim pionowym paskiem po lewej i żółtym pionowym paskiem po prawej"
+    "Długie białe tablice z niebieskim paskiem po lewej i zwykle unikatowym żółtym paskiem po prawej",
+    "Żółty pasek wycofano w 2020, więc w gen. 4 trafiają się tablice tylko z niebieskim paskiem"
+   ],
+   "slupki": [
+    "Słupki klinowe z wąskim białym szczytem lub płaskie z szerokim odblaskiem; odblaski białe albo pomarańczowe, ciemniejsze niż żółte w Hiszpanii",
+    "Na Maderze: małe kamienne słupki (prostopadłościenne lub walcowe) z czerwonym odblaskiem"
    ],
    "znaki": [
-    "Na Azorach tabliczki z nazwami ulic to niemal wyłącznie malowane płytki ceramiczne z niebieskimi literami, zwykle z ozdobną bordiurą",
-    "Na Azorach słupki znaków często w paski (podobnie na Maderze)"
+    "Szewrony czarne z żółtymi strzałkami – jedyny taki wariant w basenie Morza Śródziemnego",
+    "Białe drogowskazy z czarnymi strzałkami niedotykającymi krawędzi; hiszpańskie mają kolorowe pola z numerami dróg",
+    "Znaki zwykle w białej obwódce (większość hiszpańskich jej nie ma)",
+    "STOP z dość dużą czcionką, w Hiszpanii napis jest mały i ściśnięty",
+    "Przejście dla pieszych: pięć pasów i postać z wysoko umieszczonym paskiem; Hiszpania ma osiem pasów, Włochy brak paska, Grecja linie kropkowane",
+    "Czerwono-białe znaki łowieckie (rombowe lub prostokątne) na wsi; hiszpańskie są biało-czarne",
+    "Pachołki kilometrowe: szerokie prostokąty z ukośnie oddzieloną kolorową częścią po lewej, co kilometr większy kwadrat z numerem drogi u góry",
+    "Na Azorach: tabliczki ulic to niemal wyłącznie malowane płytki ceramiczne z niebieskimi literami i ozdobną bordiurą",
+    "Na Azorach i Maderze: słupki znaków często w paski",
+    "Na Maderze: unikatowe znaki ograniczenia prędkości na drogach szybkiego ruchu oraz czarno-biało-żółte znaki przystanków"
+   ],
+   "jezyk": [
+    "Język romański bliski hiszpańskiemu, ale z literami Ç, Ã, Õ, Â, Ê i bez Ñ (Ç występuje też po katalońsku)",
+    "Ulica to „Rua” – w języku galicyjskim „Rúa” z akcentem"
+   ],
+   "slupy": [
+    "Betonowe słupy-drabinki z bardzo wysokimi szczeblami, często z małym prześwitem w każdym; w Hiszpanii i Francji szczeble są niskie"
    ],
    "przyroda": [
-    "Azory: otwarte pola uprawne w falistym terenie, często z wysokimi, okrągłymi wzgórzami w tle; Madera jest bardzo górzysta i prawie bez otwartych pól",
-    "Na Azorach często kwitną hortensje (na Maderze rzadko)",
-    "Na Azorach bardzo częste japońskie cedry (kryptomerie); na Maderze rzadsze, w Europie kontynentalnej nie są rodzime"
+    "Bardzo dużo eukaliptusów – w Europie poza tym częste tylko w północnej Hiszpanii",
+    "Na Azorach: otwarte pola w falistym terenie z okrągłymi wzgórzami, hortensje i liczne japońskie cedry (kryptomerie)",
+    "Na Maderze: górzysty, półtropikalny krajobraz z eukaliptusami, paprociami, agapantami i tarasami pól, często w niskich chmurach lub mgle"
    ],
    "inne": [
-    "Na Azorach bardzo częste murki z suchego wulkanicznego kamienia; na kontynencie murki bywają, ale nie z kamienia wulkanicznego, na Maderze rzadkie",
-    "Domy na Azorach jedno- lub dwukondygnacyjne, z pomarańczową dachówką, białe lub pastelowe, często z ciemnozielonymi okiennicami",
-    "Obramowania budynków bywają żółte lub niebieskie jak na kontynencie, ale szare są prawie wyłącznie azorskie",
-    "Na Azorach częste krowy czarno-białe (na Maderze zwykle brązowe w białe łaty)",
-    "Azory jako region autonomiczny mają typową infrastrukturę kontynentu: słupy, szewrony i słupki"
+    "Barierki typu A z czerwonymi odblaskami (w Hiszpanii żółte)",
+    "Czarno-białe kamienie przydrożne",
+    "Częste drogi z kostki układanej ukośnie do osi jezdni oraz chodniki z jasnych kamyków",
+    "Białe murowane domy z pomarańczową dachówką, często z niebieskimi lub żółtymi obwódkami okien, drzwi i narożników",
+    "Dość często budynki pokryte ozdobnymi płytkami ceramicznymi",
+    "Na Azorach: murki z wulkanicznego kamienia, szare obwódki domów, ciemnozielone okiennice i czarno-białe krowy",
+    "Na Maderze: żółte taksówki z niebieskim pasem, białe betonowe bariery, dużo tuneli i ciemnozielone balustrady mostów",
+    "Na Maderze: na górskich drogach żółto-czarne barierki i swobodnie chodzące brązowe krowy w białe łaty"
    ]
   },
   "tips": [
-   "Żółty pasek po prawej stronie tablicy to szybki znak Portugalii.",
-   "Azory od Madery odróżnisz po łagodnych pastwiskach, wulkanicznych murkach, hortensjach i czarno-białych krowach."
+   "Od Hiszpanii odróżnisz po żółtym pasku tablicy, czarno-żółtych szewronach, czerwonych odblaskach barierek i dużej czcionce na STOP.",
+   "Słupy-drabinki z wysokimi szczeblami i eukaliptusy to mocna wskazówka na Portugalię.",
+   "Azory to łagodne pastwiska z wulkanicznymi murkami i czarno-białymi krowami; Madera – strome góry, tarasy i mgła."
   ]
  },
  {
@@ -5754,18 +5782,18 @@ window.COUNTRIES = [
     "Generacji 3 znacznie mniej niż w Kanadzie; lusterka rozmyte zwykle w jeden „szczyt”, a w Kanadzie w dwa",
     "Gen. 3 zwykle bez widocznej anteny (w Europie przeważnie jest); w parkach narodowych auto z krótką anteną owiniętą ukośnymi zwojami",
     "Gen. 4 „smallcam”: kamera niżej, duże okrągłe rozmycie z małym występem z przodu, czasem przezroczyste; przy złym rozmyciu widać lusterko po prawej",
-    "Na Alasce sporo gen. 2 oraz jedyny w kraju częsty „shitcam”: niska rozdzielczość, wyblakłe kolory i duże rozmycie na dole",
-    "Na Hawajach dużo „smallcama”, sporo gen. 2 na wiejskich drogach, a w gen. 3 zwykle krótka antena (nie zawsze widoczna)"
+    "Na Alasce: sporo gen. 2 oraz jedyny w kraju częsty „shitcam” – niska rozdzielczość, wyblakłe kolory i duże rozmycie na dole",
+    "Na Hawajach: dużo „smallcama”, sporo gen. 2 na wiejskich drogach, a w gen. 3 zwykle krótka antena (nie zawsze widoczna)"
    ],
    "tablice": [
     "Tablice krótkie, bez niebieskiego paska z boku (w odróżnieniu od europejskich); każdy stan ma własne wzory",
     "Na południowym wschodzie (aż po Michigan) i wzdłuż południa po Arizonę auta często nie mają przedniej tablicy",
-    "Na Alasce najczęściej całkowicie żółte tablice, w gen. 4 także wariant z dużym pomarańczowym kołem; od 2022 bez przedniej tablicy",
-    "Na Hawajach białe tablice z tęczowym łukiem przez środek (zarys widać nawet po rozmyciu); przednia tablica obowiązkowa"
+    "Na Alasce: najczęściej całkowicie żółte tablice, w gen. 4 także wariant z dużym pomarańczowym kołem; od 2022 bez przedniej tablicy",
+    "Na Hawajach: białe tablice z tęczowym łukiem przez środek (zarys widać nawet po rozmyciu); przednia tablica obowiązkowa"
    ],
    "slupki": [
     "Biało-pomarańczowe znaczniki światłowodu – prawie unikatowe, w Kanadzie tylko sporadycznie",
-    "Na Hawajach odblaski na jezdni w powtarzalnym układzie: jeden, cztery blisko siebie, jeden"
+    "Na Hawajach: odblaski na jezdni w powtarzalnym układzie – jeden, cztery blisko siebie, jeden"
    ],
    "linie": [
     "Żółte linie środkowe i białe krawędziowe; najczęściej podwójna żółta linia środkowa (w Kanadzie rzadziej, w Europie żółte linie to rzadkość)",
@@ -5781,23 +5809,23 @@ window.COUNTRIES = [
     "Znak jednokierunkowy: czarny poziomy prostokąt z białą strzałką i zawsze z napisem „ONE WAY”; w miastach pionowa biała wersja ze strzałką pod napisem",
     "Duże zielone tablice autostradowe z zaokrąglonymi rogami (w Kanadzie zwykle kanciaste) i niebieskie tablice z usługami przed zjazdami",
     "Białe znaki parkingowe z czerwonym, zielonym lub czarnym tekstem, pełne słów i strzałek; kanadyjskie częściej używają symboli",
-    "Na Alasce tarcza drogi stanowej z gwiazdozbiorem Wielkiego Wozu w lewym dolnym rogu",
-    "Na Hawajach tarcze dróg w kształcie kostki do gitary z numerem na dole; znaki drogowe często na żółtych słupkach"
+    "Na Alasce: tarcza drogi stanowej z gwiazdozbiorem Wielkiego Wozu w lewym dolnym rogu",
+    "Na Hawajach: tarcze dróg w kształcie kostki do gitary z numerem na dole; znaki drogowe często na żółtych słupkach"
    ],
    "jezyk": [
     "Angielski w pisowni amerykańskiej (np. center, color) – w anglojęzycznej Kanadzie pisownia brytyjska",
     "System imperialny: mile na znakach prędkości i odległości, wysokość mostów w stopach i calach",
-    "Na Hawajach nazwy miejsc po hawajsku: tylko osiem spółgłosek (H, K, L, M, N, P, W i ʻokina), każde słowo kończy się samogłoską",
-    "Na Hawajach samogłoski z makronem (Ā, Ē, Ī, Ō, Ū) i liczne dyftongi, np. AI, AE, UI"
+    "Na Hawajach: nazwy miejsc po hawajsku – tylko osiem spółgłosek (H, K, L, M, N, P, W i ʻokina), każde słowo kończy się samogłoską",
+    "Na Hawajach: samogłoski z makronem (Ā, Ē, Ī, Ō, Ū) i liczne dyftongi, np. AI, AE, UI"
    ],
    "slupy": [
     "Głównie drewniane słupy (betonowe kojarzą się raczej z Europą); transformatory w kształcie dużych metalowych cylindrów",
     "Izolatory lekko wyniesione nad szczyt słupa, szczególnie widoczne na prostych słupach z jednym izolatorem",
-    "Na Hawajach na słupach bywają grube żółte opaski – nie mylić z trzema paskami spotykanymi w Kalifornii"
+    "Na Hawajach: na słupach bywają grube żółte opaski – nie mylić z trzema paskami spotykanymi w Kalifornii"
    ],
    "przyroda": [
-    "Na Alasce drzewa smuklejsze i o węższych liściach niż w pozostałych 49 stanach, często na tle wysokich, ośnieżonych gór",
-    "Na Hawajach bujna tropikalna roślinność, paprocie, wysokie trawy i kwiaty przy drogach, a w tle wulkaniczne zbocza, klify i kratery"
+    "Na Alasce: drzewa smuklejsze i o węższych liściach niż w pozostałych 49 stanach, często na tle wysokich, ośnieżonych gór",
+    "Na Hawajach: bujna tropikalna roślinność, paprocie, wysokie trawy i kwiaty przy drogach, a w tle wulkaniczne zbocza, klify i kratery"
    ],
    "inne": [
     "Na wsi popularne prostokątne domy mobilne („trailery”), szczególnie na południowym wschodzie; w Kanadzie dużo rzadsze",
@@ -5808,7 +5836,7 @@ window.COUNTRIES = [
     "Cienkie metalowe słupki znaków z rzędem otworów lub o profilu U",
     "Ciężarówki z długą maską (silnik przed kabiną), a nie europejskie i azjatyckie „kabiny nad silnikiem”",
     "Wysokie wieże ciśnień, często z nazwą miasta i stanu",
-    "Na Hawajach domy zwykle drewniane, 1–2 kondygnacje, jasne, często z murkami oporowymi z kamienia wulkanicznego"
+    "Na Hawajach: domy zwykle drewniane, 1–2 kondygnacje, jasne, często z murkami oporowymi z kamienia wulkanicznego"
    ]
   },
   "tips": [
