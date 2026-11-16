@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>GeoMeta — nauka mety GeoGuessr</title>
-  <meta name="description" content="Meta do GeoGuessr po polsku: kraje, tablice, słupki, linie, alfabety, fiszki i quiz. Działa na telefonie i komputerze, także offline.">
-  <meta name="theme-color" content="#0f172a">
+  <title>GeoMeta — meta GeoGuessr po polsku</title>
+  <meta name="description" content="Cała meta do GeoGuessr w jednym miejscu, po polsku: ponad 120 krajów, porównania słupków, tablic i linii, poradniki, fiszki i quiz. Na telefon i komputer, także offline.">
+  <meta name="theme-color" content="#0b1120">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon.svg">
@@ -13,76 +13,89 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><span class="logo">🌍</span> GeoMeta</div>
+    <a class="brand" href="#kraje"><img src="icon.svg" alt="" width="30" height="30"><span>Geo<b>Meta</b></span></a>
     <nav class="tabs" id="tabs" aria-label="Sekcje">
-      <button data-tab="kraje" class="active"><span>🗺️</span><b>Kraje</b></button>
-      <button data-tab="porownaj"><span>🔎</span><b>Porównaj</b></button>
-      <button data-tab="poradniki"><span>📖</span><b>Poradniki</b></button>
-      <button data-tab="fiszki"><span>🃏</span><b>Fiszki</b></button>
-      <button data-tab="quiz"><span>🎯</span><b>Quiz</b></button>
+      <a href="#kraje" data-tab="kraje"><span class="ti">🗺️</span><span class="tl">Kraje</span></a>
+      <a href="#porownaj" data-tab="porownaj"><span class="ti">⚖️</span><span class="tl">Porównaj</span></a>
+      <a href="#poradniki" data-tab="poradniki"><span class="ti">📖</span><span class="tl">Poradniki</span></a>
+      <a href="#fiszki" data-tab="fiszki"><span class="ti">🃏</span><span class="tl">Fiszki</span></a>
+      <a href="#quiz" data-tab="quiz"><span class="ti">🎯</span><span class="tl">Quiz</span></a>
     </nav>
-    <button class="icon-btn" id="themeBtn" aria-label="Zmień motyw" title="Zmień motyw">🌓</button>
+    <button class="icon-btn" id="themeBtn" aria-label="Zmień motyw" title="Jasny / ciemny motyw">🌓</button>
   </header>
 
-  <main>
+  <main id="app">
     <!-- KRAJE -->
-    <section id="kraje" class="panel active">
-      <div class="toolbar">
-        <input type="search" id="search" placeholder="Szukaj kraju lub wskazówki (np. snorkel, żółte, ł)…" autocomplete="off">
-        <div class="chips" id="regionChips"></div>
-        <div class="chips">
-          <button class="chip" data-drive="all">Ruch: wszystkie</button>
-          <button class="chip" data-drive="L">⬅️ Lewostronny</button>
-          <button class="chip" data-drive="R">➡️ Prawostronny</button>
-          <button class="chip" data-learned="toggle">✅ Ukryj opanowane</button>
+    <section id="v-kraje" class="view">
+      <div class="hero">
+        <h1>Naucz się mety GeoGuessr</h1>
+        <p>Plonk It, Geometas, GeoHints i najlepsze porady zebrane w jednym miejscu — po polsku.</p>
+        <div class="searchbox">
+          <span>🔍</span>
+          <input type="search" id="search" placeholder="Szukaj: kraj, snorkel, żółte tablice, ł, cyrylica…" autocomplete="off" enterkeyhint="search">
         </div>
       </div>
-      <div class="progress-wrap"><div class="progress"><div id="learnedBar"></div></div><span id="learnedTxt"></span></div>
+      <div class="filters">
+        <div class="chips" id="regionChips"></div>
+        <div class="chips">
+          <button class="chip" data-drive="L">⬅️ Ruch lewostronny</button>
+          <button class="chip" data-drive="R">➡️ Prawostronny</button>
+          <button class="chip" data-f="hideLearned">Ukryj opanowane</button>
+          <button class="chip" data-f="showMinor">Pokaż małe terytoria</button>
+        </div>
+      </div>
+      <div class="progress-row"><div class="progress"><div id="learnedBar"></div></div><span id="learnedTxt"></span></div>
+      <div id="searchHits"></div>
       <div class="grid" id="countryGrid"></div>
     </section>
 
+    <!-- KRAJ -->
+    <section id="v-kraj" class="view"></section>
+
     <!-- PORÓWNAJ -->
-    <section id="porownaj" class="panel">
-      <p class="lead">Wybierz kategorię i zobacz ją obok siebie dla wszystkich krajów — najlepszy sposób, żeby wychwycić różnice.</p>
-      <div class="chips" id="compareChips"></div>
+    <section id="v-porownaj" class="view">
+      <h2 class="vtitle">Porównaj kraje</h2>
+      <p class="lead">Wybierz jedną rzecz — np. słupki — i zobacz ją we wszystkich krajach naraz. Najszybszy sposób, żeby wyłapać różnice.</p>
+      <div class="chips wrap" id="compareChips"></div>
+      <div class="chips" id="compareRegions"></div>
       <div id="compareList" class="compare"></div>
     </section>
 
     <!-- PORADNIKI -->
-    <section id="poradniki" class="panel">
+    <section id="v-poradniki" class="view">
+      <h2 class="vtitle">Poradniki</h2>
       <div id="guideList" class="guides"></div>
     </section>
 
     <!-- FISZKI -->
-    <section id="fiszki" class="panel">
-      <div class="toolbar">
-        <div class="row">
-          <label>Region <select id="fcRegion"></select></label>
-          <label>Kategoria <select id="fcCat"></select></label>
-          <label>Tryb <select id="fcMode">
-            <option value="clue">Wskazówka → kraj</option>
-            <option value="country">Kraj → wskazówka</option>
-          </select></label>
-        </div>
+    <section id="v-fiszki" class="view">
+      <h2 class="vtitle">Fiszki</h2>
+      <div class="selects">
+        <label>Region <select id="fcRegion"></select></label>
+        <label>Kategoria <select id="fcCat"></select></label>
+        <label>Tryb <select id="fcMode">
+          <option value="clue">Wskazówka → kraj</option>
+          <option value="country">Kraj → wskazówki</option>
+        </select></label>
       </div>
       <div class="fc-stats" id="fcStats"></div>
       <div class="flashcard" id="flashcard" tabindex="0" role="button" aria-label="Odwróć fiszkę">
         <div class="fc-inner">
-          <div class="fc-front" id="fcFront"></div>
-          <div class="fc-back" id="fcBack"></div>
+          <div class="fc-face fc-front" id="fcFront"></div>
+          <div class="fc-face fc-back" id="fcBack"></div>
         </div>
       </div>
       <div class="fc-actions">
-        <button class="btn bad" id="fcBad">❌ Nie wiedziałem <kbd>1</kbd></button>
-        <button class="btn" id="fcFlip">🔄 Odwróć <kbd>Spacja</kbd></button>
-        <button class="btn good" id="fcGood">✅ Wiedziałem <kbd>2</kbd></button>
+        <button class="btn bad" id="fcBad">✗ Nie wiem <kbd>1</kbd></button>
+        <button class="btn" id="fcFlip">↻ Odwróć <kbd>spacja</kbd></button>
+        <button class="btn good" id="fcGood">✓ Wiem <kbd>2</kbd></button>
       </div>
-      <p class="muted center">System Leitnera: karty, których nie znasz, wracają częściej. Postęp zapisuje się w przeglądarce.</p>
+      <p class="muted center small">Przesuń kartę w prawo = wiem, w lewo = nie wiem. Karty, których nie znasz, wracają częściej (system Leitnera).</p>
       <p class="center"><button class="link" id="fcReset">Wyzeruj postęp fiszek</button></p>
     </section>
 
     <!-- QUIZ -->
-    <section id="quiz" class="panel">
+    <section id="v-quiz" class="view">
       <div id="quizSetup" class="card setup">
         <h2>🎯 Quiz</h2>
         <label>Typ pytań
@@ -94,18 +107,16 @@
             <option value="domain">Domena internetowa</option>
           </select>
         </label>
+        <label>Kategoria wskazówek <select id="qCat"></select></label>
         <label>Region <select id="qRegion"></select></label>
         <label>Liczba pytań
           <select id="qCount"><option>10</option><option selected>20</option><option>40</option></select>
         </label>
-        <button class="btn primary big" id="qStart">Start</button>
-        <p class="muted" id="qBest"></p>
+        <button class="btn primary big" id="qStart">Start ➜</button>
+        <p class="muted small" id="qBest"></p>
       </div>
       <div id="quizGame" class="hidden">
-        <div class="quiz-head">
-          <span id="qProgress"></span>
-          <span id="qScore"></span>
-        </div>
+        <div class="quiz-head"><span id="qProgress"></span><span id="qScore"></span></div>
         <div class="progress"><div id="qBar"></div></div>
         <div class="card question" id="qQuestion"></div>
         <div class="answers" id="qAnswers"></div>
@@ -115,16 +126,16 @@
     </section>
   </main>
 
-  <!-- Szczegóły kraju -->
-  <dialog id="countryDialog">
-    <div id="dialogBody"></div>
-  </dialog>
-
   <footer class="foot">
-    Meta zebrana z wiedzy społeczności (Plonk It, GeoHints, geotips). Meta się zmienia — traktuj ją jako prawdopodobieństwo.
+    Treści opracowane na podstawie <a href="https://www.plonkit.net/guide" target="_blank" rel="noopener">Plonk It</a>,
+    <a href="https://geometas.com/" target="_blank" rel="noopener">Geometas</a>,
+    <a href="https://geohints.com/" target="_blank" rel="noopener">GeoHints</a> i
+    <a href="https://somerandomstuff1.wordpress.com/2019/02/08/geoguessr-the-top-tips-tricks-and-techniques/" target="_blank" rel="noopener">GeoGuessr Top Tips</a>.
+    Meta się zmienia — traktuj ją jako prawdopodobieństwo.
   </footer>
 
-  <script src="js/data.js"></script>
+  <script src="js/countries.js"></script>
+  <script src="js/guides.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
