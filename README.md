@@ -3,11 +3,12 @@
 Strona do nauki mety GeoGuessr po polsku, wygodna na telefonie i komputerze.
 
 ## Co jest w środku
+- **Nauka** — panel startowy: seria dni 🔥, dzienny cel, powtórki na dziś, „Moje błędy” oraz **ścieżka nauki** — lekcje z grupami krajów, które łatwo pomylić (przegląd kart → fiszki → test, 80% = zaliczone).
 - **Kraje** — 127 krajów i terytoriów (100 głównych) — ponad 2100 wskazówek: kamera Google, tablice, słupki, linie, znaki, język, słupy, przyroda, architektura. Każdy kraj ma zakładki: **Rozpoznanie**, **Regiony**, **Szczegóły** (karty ze zdjęciami z Plonk It, po polsku), **Ściąga** i **Galeria** (zdjęcia z GeoHints). Wyszukiwarka, filtry, oznaczanie krajów jako opanowane.
 - **Porównaj** — jedna kategoria obok siebie dla wszystkich krajów, jako opisy albo zdjęcia (16 galerii GeoHints: słupki, tablice, słupy, samochody Google i eskorty, szewrony, STOP, przejścia, drogowskazy…).
 - **Poradniki** — plan rundy, ruch lewostronny, żółte linie, kolory tablic, ALTO/PARE, generacje kamer, cyrylica, litery łacinki, słońce i cienie, poruszanie się, tryby rywalizacji.
-- **Fiszki** — system Leitnera (karty, których nie znasz, wracają częściej), swipe na telefonie, skróty klawiszowe (Spacja, 1, 2).
-- **Quiz** — wskazówka→kraj, flaga, strona ruchu, domena; rekordy i lista krajów do powtórki.
+- **Fiszki** — powtórki rozłożone w czasie (1 → 3 → 7 → 14 → 30 dni), przykładowe zdjęcie na odwrocie, swipe na telefonie, skróty klawiszowe (Spacja, 1, 2).
+- **Quiz** — wskazówka→kraj, **zdjęcie→kraj** (jak w GeoGuessr), flaga, strona ruchu, domena; przykładowe zdjęcie po każdej odpowiedzi, błędy zapisują się do powtórki.
 - Tryb ciemny, działa offline (PWA — można „dodać do ekranu głównego”).
 
 ## Uruchomienie lokalne

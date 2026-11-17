@@ -46,20 +46,22 @@
   const scrollPos = {};
   let currentRoute = '';
   function route() {
-    const h = location.hash.slice(1) || 'kraje';
+    const h = location.hash.slice(1) || 'nauka';
     const [view, arg] = h.split('/');
     if (currentRoute) scrollPos[currentRoute] = scrollY;
-    const tab = view === 'kraj' ? 'kraje' : view;
+    const tab = view === 'kraj' ? 'kraje' : view === 'lekcja' ? 'nauka' : view;
     if (view !== 'kraj') document.title = 'GeoMeta — meta GeoGuessr po polsku';
     $$('#tabs a').forEach(a => a.classList.toggle('active', a.dataset.tab === tab));
     $$('.view').forEach(v => v.classList.toggle('active', v.id === 'v-' + view));
     if (view === 'kraj' && byId[arg]) renderCountry(arg);
     else if (view === 'kraj') return (location.hash = 'kraje');
-    if (view === 'fiszki' && !fc.card) fcNext();
+    if (view === 'nauka') renderNauka();
+    if (view === 'lekcja') { if (lessonById[arg]) renderLesson(arg); else return (location.hash = 'nauka'); }
+    if (view === 'fiszki') fcNext();
     if (view === 'poradniki' && arg) { const d = document.getElementById('g-' + arg); if (d) { d.open = true; setTimeout(() => d.scrollIntoView({ block: 'start' }), 30); } }
     currentRoute = h;
-    if (!(view === 'poradniki' && arg)) requestAnimationFrame(() => scrollTo(0, view === 'kraj' ? 0 : (scrollPos[h] || 0)));
-    if (['kraje', 'porownaj', 'poradniki', 'fiszki', 'quiz'].includes(view)) store.set('tab', view);
+    if (!(view === 'poradniki' && arg)) requestAnimationFrame(() => scrollTo(0, ['kraj', 'lekcja', 'quiz'].includes(view) ? 0 : (scrollPos[h] || 0)));
+    if (['nauka', 'kraje', 'porownaj', 'poradniki'].includes(view)) store.set('tab', view);
   }
   addEventListener('hashchange', route);
 
@@ -184,7 +186,7 @@
       learned.has(id) ? learned.delete(id) : learned.add(id);
       store.set('learned', [...learned]); renderGrid(); renderCountry(id);
     };
-    $('#drillCountry').onclick = () => { fc.only = id; location.hash = 'fiszki'; fcNext(); };
+    $('#drillCountry').onclick = () => { fc.only = [id]; fc.extra = true; location.hash = 'fiszki'; fcNext(); };
   }
 
   // ── zakładki karty kraju ──
@@ -356,70 +358,98 @@
   $('#fcRegion').innerHTML = regionOpts; $('#qRegion').innerHTML = regionOpts;
   $('#fcCat').innerHTML = catOpts; $('#qCat').innerHTML = catOpts;
 
-  const allCards = C.filter(c => !c.minor).flatMap(c => allClues(c).map(([k, v], i) => ({ id: `${c.id}:${k}:${fold(v).slice(0, 40)}`, c, k, v })));
-  let boxes = store.get('boxes2', {});
-  const fc = { card: null, flipped: false, last: [], only: null };
+  const allCards = C.filter(c => !c.minor).flatMap(c => allClues(c).map(([k, v]) => ({ id: `${c.id}:${k}:${fold(v).slice(0, 40)}`, c, k, v })));
+
+  // ── postęp: dni, seria, powtórki rozłożone w czasie ──
+  const today = () => Math.floor((Date.now() - new Date().getTimezoneOffset() * 60000) / 86400000);
+  let act = store.get('activity', {});
+  const GOAL = 30;
+  function logActivity() { const d = today(); act[d] = (act[d] || 0) + 1; store.set('activity', act); }
+  function streak() { let n = 0, d = today(); if (!act[d]) d--; while (act[d]) { n++; d--; } return n; }
+  const INTERVALS = [0, 1, 3, 7, 14, 30];
+  let srs = store.get('srs3', null);
+  if (!srs) { srs = {}; const old = store.get('boxes2', {}); for (const [k, v] of Object.entries(old)) srs[k] = [Math.min(5, v), today()]; store.set('srs3', srs); }
+  const isDue = id => srs[id] && srs[id][1] <= today();
+  const mastered = id => srs[id] && srs[id][0] >= 3;
+
+  const fc = { card: null, flipped: false, last: [], only: null, extra: false };
   const fcSet = store.get('fcSettings2', { region: 'all', cat: 'all', mode: 'clue' });
   $('#fcRegion').value = fcSet.region; $('#fcCat').value = fcSet.cat; $('#fcMode').value = fcSet.mode;
   ['#fcRegion', '#fcCat', '#fcMode'].forEach(s => $(s).onchange = () => {
     Object.assign(fcSet, { region: $('#fcRegion').value, cat: $('#fcCat').value, mode: $('#fcMode').value });
-    fc.only = null; store.set('fcSettings2', fcSet); fcNext();
+    fc.only = null; fc.extra = false; store.set('fcSettings2', fcSet); fcNext();
   });
-
+  const inScope = c => fc.only ? fc.only.includes(c.id) : (fcSet.region === 'all' || c.region === fcSet.region);
   function deck() {
     if (fcSet.mode === 'country') {
-      return C.filter(c => !c.minor && (fc.only ? c.id === fc.only : (fcSet.region === 'all' || c.region === fcSet.region)))
+      return C.filter(c => !c.minor && inScope(c))
         .filter(c => fcSet.cat === 'all' || (c.clues[fcSet.cat] || []).length)
         .map(c => ({ id: `country:${c.id}:${fcSet.cat}`, c, k: fcSet.cat }));
     }
-    return allCards.filter(x => (fc.only ? x.c.id === fc.only : (fcSet.region === 'all' || x.c.region === fcSet.region)) && (fcSet.cat === 'all' || x.k === fcSet.cat));
+    return allCards.filter(x => inScope(x.c) && (fcSet.cat === 'all' || x.k === fcSet.cat));
   }
 
   function fcNext() {
     const d = deck();
     $('#flashcard').classList.remove('flipped'); fc.flipped = false;
+    $('#flashcard').classList.remove('done');
     if (!d.length) { fc.card = null; $('#fcFront').innerHTML = '<div class="muted">Brak kart dla tych filtrów.</div>'; $('#fcBack').innerHTML = ''; renderFcStats(d); return; }
-    const pool = d.length > 6 ? d.filter(x => !fc.last.includes(x.id)) : d;
-    const weights = pool.map(x => [24, 10, 5, 2, 1][boxes[x.id] || 0]);
-    let r = Math.random() * weights.reduce((a, b) => a + b, 0), card = pool[0];
-    for (let i = 0; i < pool.length; i++) { r -= weights[i]; if (r <= 0) { card = pool[i]; break; } }
+    const notLast = arr => arr.length > 3 ? arr.filter(x => !fc.last.includes(x.id)) : arr;
+    const due = d.filter(x => isDue(x.id)), fresh = d.filter(x => !srs[x.id]);
+    // najpierw karty z błędami (pudełko 0), potem reszta zaległych, potem nowe
+    let pool = notLast(due.filter(x => srs[x.id][0] === 0));
+    if (!pool.length) pool = notLast(due);
+    if (!pool.length) pool = notLast(fresh);
+    if (!pool.length && fc.extra) pool = notLast(d);
+    if (!pool.length) {
+      fc.card = null; renderFcStats(d);
+      $('#fcFront').innerHTML = `<div style="font-size:3rem">🎉</div><b>Wszystko powtórzone na dziś!</b><div class="fc-hint">Karty wrócą, gdy przyjdzie czas na powtórkę.</div><button class="btn primary" id="fcExtra">Ucz się dalej mimo to</button>`;
+      $('#fcBack').innerHTML = '';
+      $('#fcExtra').onclick = e => { e.stopPropagation(); fc.extra = true; fcNext(); };
+      return;
+    }
+    const card = pick(pool);
     fc.card = card; fc.last = [card.id, ...fc.last].slice(0, 6);
     const country = `${flag(card.c.id, fcSet.mode === 'clue' ? 'lg' : 'xl')}<div style="font-size:1.5rem;font-weight:800">${esc(card.c.name)}</div><div class="fc-hint">${card.c.region} · ruch ${driveTxt(card.c.drive)}</div>`;
+    const badge = !srs[card.id] ? '<span class="fc-badge new">nowa</span>' : srs[card.id][0] === 0 ? '<span class="fc-badge bad">do poprawy</span>' : `<span class="fc-badge">powtórka · poziom ${srs[card.id][0]}</span>`;
     if (fcSet.mode === 'clue') {
       const lab = CATS[card.k];
-      $('#fcFront').innerHTML = `<div class="fc-cat">${lab.icon} ${lab.label}</div><div>${esc(card.v)}</div><div class="fc-hint">Jaki to kraj? Stuknij, aby odwrócić</div>`;
+      $('#fcFront').innerHTML = `${badge}<div class="fc-cat">${lab.icon} ${lab.label}</div><div>${esc(card.v)}</div><div class="fc-hint">Jaki to kraj? Pomyśl, potem stuknij, aby odwrócić</div>`;
       $('#fcBack').innerHTML = country + '<div class="qex fc-ex" id="fcEx"></div>';
       const cid = card.id;
       examplesFor(card.c, card.k, card.v).then(list => { const el = $('#fcEx'); if (el && fc.card && fc.card.id === cid) renderExamples(el, list.slice(0, 2), false); });
     } else {
       const items = card.k === 'all' ? allClues(card.c).slice(0, 8) : (card.c.clues[card.k] || []).map(v => [card.k, v]);
-      $('#fcFront').innerHTML = `${country}<div class="fc-cat">${card.k === 'all' ? 'Jak go rozpoznać?' : CATS[card.k].icon + ' ' + CATS[card.k].label + '?'}</div>`;
+      $('#fcFront').innerHTML = `${badge}${country}<div class="fc-cat">${card.k === 'all' ? 'Jak go rozpoznać?' : CATS[card.k].icon + ' ' + CATS[card.k].label + '?'}</div>`;
       $('#fcBack').innerHTML = `<div class="fc-cat">${esc(card.c.name)}</div><ul>${items.map(([k, v]) => `<li>${CATS[k].icon} ${esc(v)}</li>`).join('')}</ul>`;
     }
     renderFcStats(d);
   }
   function renderFcStats(d) {
-    const cnt = [0, 0, 0, 0, 0]; d.forEach(x => cnt[boxes[x.id] || 0]++);
-    $('#fcStats').innerHTML = (fc.only ? `<span>🎯 ${esc(byId[fc.only].name)} <button class="link" id="fcAll">pokaż wszystkie</button></span>` : '') +
-      `<span>Kart: ${d.length}</span><span>🆕 Nowe/słabe: ${cnt[0]}</span><span>📈 W nauce: ${cnt[1] + cnt[2] + cnt[3]}</span><span>🏆 Opanowane: ${cnt[4]}</span>`;
+    let due = 0, fresh = 0, learning = 0, done = 0;
+    for (const x of d) { const r = srs[x.id]; if (!r) fresh++; else { if (r[1] <= today()) due++; if (r[0] >= 3) done++; else learning++; } }
+    const scope = fc.only ? (fc.only.length === 1 ? byId[fc.only[0]].name : `lekcja (${fc.only.length} kraje)`) : null;
+    $('#fcStats').innerHTML = (scope ? `<span>🎯 ${esc(scope)} <button class="link" id="fcAll">wszystkie</button></span>` : '') +
+      `<span>🔁 Do powtórki: <b>${due}</b></span><span>🆕 Nowe: ${fresh}</span><span>📈 W nauce: ${learning}</span><span>🏆 Opanowane: ${done}</span><span>🔥 Dziś: ${act[today()] || 0}/${GOAL}</span>`;
     const all = $('#fcAll'); if (all) all.onclick = () => { fc.only = null; fcNext(); };
   }
   function fcFlip() { if (!fc.card) return; fc.flipped = !fc.flipped; $('#flashcard').classList.toggle('flipped', fc.flipped); }
   function fcAnswer(ok) {
     if (!fc.card) return;
-    const b = boxes[fc.card.id] || 0;
-    boxes[fc.card.id] = ok ? Math.min(4, b + 1) : 0;
-    store.set('boxes2', boxes); fcNext();
+    const b = srs[fc.card.id] ? srs[fc.card.id][0] : 0;
+    const nb = ok ? Math.min(5, b + 1) : 0;
+    srs[fc.card.id] = [nb, today() + (ok ? INTERVALS[nb] : 0)];
+    store.set('srs3', srs); logActivity(); fcNext();
   }
   $('#flashcard').onclick = fcFlip; $('#fcFlip').onclick = fcFlip;
   $('#fcGood').onclick = () => fcAnswer(true); $('#fcBad').onclick = () => fcAnswer(false);
-  $('#fcReset').onclick = () => { if (confirm('Wyzerować postęp fiszek?')) { boxes = {}; store.set('boxes2', boxes); fcNext(); } };
+  $('#fcReset').onclick = () => { if (confirm('Wyzerować postęp fiszek?')) { srs = {}; store.set('srs3', srs); fcNext(); } };
   let tx = null;
   $('#flashcard').addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
   $('#flashcard').addEventListener('touchend', e => {
     if (tx === null) return;
     const dx = e.changedTouches[0].clientX - tx; tx = null;
-    if (Math.abs(dx) > 70) { e.preventDefault(); fcAnswer(dx > 0); }
+    if (Math.abs(dx) > 70 && fc.card) { e.preventDefault(); fcAnswer(dx > 0); }
   });
 
   // ── przykładowe zdjęcia do wskazówki (quiz, fiszki) ──
@@ -466,54 +496,106 @@
   }
 
   // ═════════ QUIZ ═════════
-  const q = { list: [], i: 0, score: 0, answered: false, mistakes: [] };
+  const q = { list: [], i: 0, score: 0, answered: false, mistakes: [], opts: {} };
+  let mistakes = store.get('mistakes', []);
+  const specKey = sp => `${sp.t}|${sp.c}|${sp.v || sp.img || ''}`;
   const qKey = () => `${$('#qType').value}|${$('#qCat').value}|${$('#qRegion').value}`;
   function bestTxt() {
     const best = store.get('best', {});
     $('#qBest').textContent = best[qKey()] != null ? `🏆 Twój rekord w tych ustawieniach: ${best[qKey()]}%` : 'Jeszcze nie grałeś w tych ustawieniach.';
     $('#qCat').closest('label').classList.toggle('hidden', !['mix', 'clue'].includes($('#qType').value));
+    $('#qMistakes').textContent = `❌ Powtórz moje błędy (${mistakes.length})`;
+    $('#qMistakes').disabled = !mistakes.length;
   }
   ['#qType', '#qRegion', '#qCat'].forEach(s => $(s).onchange = bestTxt);
 
-  function distractors(correct, n) {
-    const pool = C.filter(c => !c.minor && c.id !== correct.id);
-    const same = shuffle(pool.filter(c => c.region === correct.region));
-    const other = shuffle(pool.filter(c => c.region !== correct.region));
-    return [...same.slice(0, n), ...other].slice(0, n);
+  function distractors(correct, n, pool) {
+    const others = C.filter(c => !c.minor && c.id !== correct.id);
+    const inPool = shuffle((pool || []).filter(c => c.id !== correct.id));
+    const same = shuffle(others.filter(c => c.region === correct.region && !inPool.includes(c)));
+    const rest = shuffle(others.filter(c => c.region !== correct.region && !inPool.includes(c)));
+    return [...inPool.slice(0, n), ...same, ...rest].slice(0, n);
   }
-  function makeQuestion(type, pool, cat) {
+  const PHOTO_GAL = ['bollards', 'licensePlates', 'utilityPoles', 'googleVehicles_cars', 'signs_chevrons', 'signs_directions', 'signs_citySigns', 'signs_pedestrian', 'signs_stop', 'signs_signPosts'];
+  // spec = minimalny opis pytania (da się zapisać w „błędach”)
+  function makeSpec(type, pool, cat, P, G) {
     if (type === 'clue') {
       const cands = pool.filter(c => cat === 'all' ? allClues(c).length : (c.clues[cat] || []).length);
-      const c = pick(cands);
-      const [k, v] = pick(cat === 'all' ? allClues(c) : c.clues[cat].map(v => [cat, v]));
-      return { k, v, key: v, prompt: `<div class="fc-cat">${CATS[k].icon} ${CATS[k].label}</div><div>${esc(v)}</div><div class="muted small">Który to kraj?</div>`, options: shuffle([c, ...distractors(c, 3)]).map(x => x.name), answer: c.name, country: c };
+      const c = pick(cands); const [k, v] = pick(cat === 'all' ? allClues(c) : c.clues[cat].map(v => [cat, v]));
+      return { t: 'clue', c: c.id, k, v };
     }
-    const c = pick(pool);
-    if (type === 'drive') return { key: 'd' + c.id, prompt: `${flag(c.id, 'xl')}<div>Po której stronie jeździ się w kraju <b>${esc(c.name)}</b>?</div>`, options: ['⬅️ Lewostronny', '➡️ Prawostronny'], answer: c.drive === 'L' ? '⬅️ Lewostronny' : '➡️ Prawostronny', country: c };
-    const opts = shuffle([c, ...distractors(c, 3)]).map(x => x.name);
-    if (type === 'flag') return { key: 'f' + c.id, prompt: `${flag(c.id, 'xl')}<div>Czyja to flaga?</div>`, options: opts, answer: c.name, country: c };
-    return { key: 'o' + c.id, prompt: `<div style="font-size:2.6rem;font-weight:800">${esc(c.domain)}</div><div>Do jakiego kraju należy ta domena?</div>`, options: opts, answer: c.name, country: c };
+    if (type === 'photo') {
+      for (let tries = 0; tries < 20; tries++) {
+        const c = pick(pool);
+        const useGal = G && Math.random() < 0.4;
+        if (useGal) {
+          const opts = PHOTO_GAL.flatMap(g => (G[g] || []).filter(x => x[0] === c.id).map(x => [g, ...x]));
+          if (opts.length) { const [g, , img, , note] = pick(opts); return { t: 'photo', c: c.id, img: GH_IMG(img), lab: GAL[g][1], cap: note ? `${GAL[g][1]} · ${note}` : GAL[g][1] }; }
+        }
+        const d = P[c.id];
+        if (d) {
+          const items = d.items.filter((it, i) => it[0] === 1 && it[2].length && (it[4] || '').length > 25 && i > 0);
+          if (items.length) { const it = pick(items); return { t: 'photo', c: c.id, img: PLONK_IMG(pick(it[2]), 900), cap: it[4], map: it[3] }; }
+        }
+      }
+      return makeSpec('clue', pool, 'all');
+    }
+    return { t: type, c: pick(pool).id };
+  }
+  function buildQ(sp, pool) {
+    const c = byId[sp.c];
+    const opts = () => shuffle([c, ...distractors(c, 3, pool)]).map(x => x.name);
+    const base = { spec: sp, key: specKey(sp), country: c, answer: c.name };
+    if (sp.t === 'clue') return { ...base, k: sp.k, v: sp.v, options: opts(), prompt: `<div class="fc-cat">${CATS[sp.k].icon} ${CATS[sp.k].label}</div><div>${esc(sp.v)}</div><div class="muted small">Który to kraj?</div>` };
+    if (sp.t === 'photo') return { ...base, options: opts(), prompt: `${sp.lab ? `<div class="fc-cat">📸 ${esc(sp.lab)}</div>` : '<div class="fc-cat">📸 Gdzie zrobiono to zdjęcie?</div>'}<button class="qphoto" data-lb="0"><img src="${esc(sp.img)}" alt=""></button><div class="muted small">Który to kraj? Stuknij zdjęcie, aby powiększyć</div>` };
+    if (sp.t === 'drive') return { ...base, answer: c.drive === 'L' ? '⬅️ Lewostronny' : '➡️ Prawostronny', options: ['⬅️ Lewostronny', '➡️ Prawostronny'], prompt: `${flag(c.id, 'xl')}<div>Po której stronie jeździ się w kraju <b>${esc(c.name)}</b>?</div>` };
+    if (sp.t === 'flag') return { ...base, options: opts(), prompt: `${flag(c.id, 'xl')}<div>Czyja to flaga?</div>` };
+    return { ...base, options: opts(), prompt: `<div style="font-size:2.6rem;font-weight:800">${esc(c.domain)}</div><div>Do jakiego kraju należy ta domena?</div>` };
+  }
+
+  async function startQuiz(o) {
+    // o: { pool, n, types, cat, specs, title, lesson, key, mistakesMode }
+    $('#quizSetup').classList.add('hidden'); $('#quizGame').classList.remove('hidden');
+    $('#qQuestion').innerHTML = '<div class="loading">Przygotowuję pytania…</div>'; $('#qAnswers').innerHTML = ''; $('#qFeedback').innerHTML = ''; $('#qNext').classList.add('hidden');
+    let specs = o.specs;
+    if (!specs) {
+      const types = Array.from({ length: o.n }, () => pick(o.types));
+      const P = {}; let G = null;
+      if (types.includes('photo')) {
+        const need = shuffle(o.pool).slice(0, Math.min(o.pool.length, 25));
+        await Promise.all(need.map(c => loadJSON(`data/plonk/${c.id}.json`).then(d => { P[c.id] = d; }).catch(() => {})));
+        G = await loadJSON('data/gallery.json').catch(() => null);
+        o.photoPool = need;
+      }
+      const used = new Set(); specs = [];
+      for (const t of types) {
+        let sp, tries = 0;
+        do { sp = makeSpec(t, t === 'photo' ? o.photoPool : o.pool, o.cat || 'all', P, G); tries++; } while (used.has(specKey(sp)) && tries < 30);
+        used.add(specKey(sp)); specs.push(sp);
+      }
+    }
+    q.list = specs.map(sp => buildQ(sp, o.pool));
+    Object.assign(q, { i: 0, score: 0, mistakes: [], opts: o });
+    renderQ();
   }
   $('#qStart').onclick = () => {
-    const region = $('#qRegion').value, type = $('#qType').value, n = +$('#qCount').value, cat = $('#qCat').value;
+    const region = $('#qRegion').value, type = $('#qType').value, cat = $('#qCat').value;
     const pool = C.filter(c => !c.minor && (region === 'all' || c.region === region));
-    const used = new Set(); q.list = [];
-    for (let i = 0; i < n; i++) {
-      const t = type === 'mix' ? pick(['clue', 'clue', 'clue', 'clue', 'flag', 'drive', 'domain']) : type;
-      let qq, tries = 0;
-      do { qq = makeQuestion(t, pool, cat); tries++; } while (used.has(qq.key) && tries < 30);
-      used.add(qq.key); q.list.push(qq);
-    }
-    Object.assign(q, { i: 0, score: 0, mistakes: [], k: qKey() });
-    $('#quizSetup').classList.add('hidden'); $('#quizGame').classList.remove('hidden');
-    renderQ();
+    const types = type === 'mix' ? ['clue', 'clue', 'clue', 'photo', 'photo', 'flag', 'drive', 'domain'] : [type];
+    startQuiz({ pool, n: +$('#qCount').value, types, cat, key: qKey() });
+  };
+  $('#qMistakes').onclick = () => {
+    if (!mistakes.length) return;
+    const specs = shuffle(mistakes).slice(0, 20);
+    startQuiz({ pool: C.filter(c => !c.minor), specs, mistakesMode: true, title: 'Powtórka błędów' });
   };
   function renderQ() {
     const cur = q.list[q.i]; q.answered = false;
-    $('#qProgress').textContent = `Pytanie ${q.i + 1} / ${q.list.length}`;
+    $('#qProgress').textContent = `${q.opts.title ? q.opts.title + ' · ' : ''}Pytanie ${q.i + 1} / ${q.list.length}`;
     $('#qScore').textContent = `✅ ${q.score}`;
     $('#qBar').style.width = (q.i / q.list.length * 100) + '%';
     $('#qQuestion').innerHTML = cur.prompt;
+    if (cur.spec.t === 'photo') bindLightbox($('#qQuestion'), [{ src: cur.spec.img, cap: '' }]);
     $('#qAnswers').innerHTML = cur.options.map((o, i) => `<button class="btn" data-o="${esc(o)}"><kbd>${i + 1}</kbd> ${esc(o)}</button>`).join('');
     $$('#qAnswers .btn').forEach(b => b.onclick = () => answerQ(b));
     $('#qFeedback').innerHTML = ''; $('#qNext').classList.add('hidden');
@@ -521,15 +603,24 @@
   function answerQ(btn) {
     if (q.answered) return; q.answered = true;
     const cur = q.list[q.i], ok = btn.dataset.o === cur.answer;
+    logActivity();
     $$('#qAnswers .btn').forEach(b => { b.disabled = true; if (b.dataset.o === cur.answer) b.classList.add('correct'); });
-    if (ok) { q.score++; $('#qFeedback').innerHTML = '✅ Dobrze!'; }
-    else {
+    if (ok) {
+      q.score++; $('#qFeedback').innerHTML = '✅ Dobrze!';
+      if (q.opts.mistakesMode) mistakes = mistakes.filter(m => specKey(m) !== cur.key);
+    } else {
       btn.classList.add('wrong'); q.mistakes.push(cur);
-      $('#qFeedback').innerHTML = `❌ Poprawnie: <b>${esc(cur.answer)}</b> · <a href="#kraj/${cur.country.id}" target="_self">karta kraju</a>`;
+      if (!mistakes.some(m => specKey(m) === cur.key)) mistakes = [cur.spec, ...mistakes].slice(0, 150);
+      $('#qFeedback').innerHTML = `❌ Poprawnie: <b>${esc(cur.answer)}</b> · <a href="#kraj/${cur.country.id}">karta kraju</a>`;
     }
+    store.set('mistakes', mistakes);
     $('#qScore').textContent = `✅ ${q.score}`;
     $('#qNext').classList.remove('hidden');
     const ex = document.createElement('div'); ex.className = 'qex'; $('#qFeedback').appendChild(ex);
+    if (cur.spec.t === 'photo') {
+      if (cur.spec.cap) ex.innerHTML = `<div class="qex-title">Co tu widać</div><div class="qex-cap">${txt(cur.spec.cap)}${mapLink(cur.spec.map)}</div>`;
+      return;
+    }
     const qi = q.i;
     ex.innerHTML = '<div class="qex-title muted">Szukam przykładu…</div>';
     examplesFor(cur.country, cur.k, cur.v).then(list => { if (q.i === qi && ex.isConnected) renderExamples(ex, list); });
@@ -537,21 +628,129 @@
   $('#qNext').onclick = () => {
     q.i++;
     if (q.i < q.list.length) return renderQ();
-    const pct = Math.round(q.score / q.list.length * 100);
-    const best = store.get('best', {}); const record = best[q.k] == null || pct > best[q.k];
-    if (record) { best[q.k] = pct; store.set('best', best); }
+    const o = q.opts, pct = Math.round(q.score / q.list.length * 100);
+    let extra = '';
+    if (o.key) {
+      const best = store.get('best', {}); const record = best[o.key] == null || pct > best[o.key];
+      if (record) { best[o.key] = pct; store.set('best', best); extra = ' · 🏆 Nowy rekord!'; }
+    }
+    if (o.lesson) {
+      const L = store.get('lessons', {}); L[o.lesson] = Math.max(L[o.lesson] || 0, pct); store.set('lessons', L);
+      extra = pct >= 80 ? ' · ✅ Lekcja zaliczona!' : ' · Do zaliczenia potrzeba 80%';
+    }
     $('#qBar').style.width = '100%';
     $('#qAnswers').innerHTML = ''; $('#qFeedback').innerHTML = ''; $('#qNext').classList.add('hidden');
     const uniq = [...new Map(q.mistakes.map(m => [m.country.id, m.country])).values()];
+    const next = o.lesson ? nextLesson(o.lesson) : null;
     $('#qQuestion').innerHTML = `<div class="result">
       <div class="score">${pct}%</div>
-      <div>${q.score} / ${q.list.length} ${record ? '· 🏆 Nowy rekord!' : ''}</div>
-      ${uniq.length ? `<p><b>Do powtórki:</b></p><div class="flaglist" style="justify-content:center">${uniq.map(c => `<a href="#kraj/${c.id}">${flag(c.id, 'sm')}${esc(c.name)}</a>`).join('')}</div>` : '<p>Bezbłędnie! 🎉</p>'}
-      <p><button class="btn primary" id="qAgain">Jeszcze raz</button> <button class="btn" id="qBack">Ustawienia</button></p>
+      <div>${q.score} / ${q.list.length}${extra}</div>
+      ${uniq.length ? `<p><b>Do powtórki:</b></p><div class="flaglist" style="justify-content:center">${uniq.map(c => `<a href="#kraj/${c.id}">${flag(c.id, 'sm')}${esc(c.name)}</a>`).join('')}</div><p class="muted small">Błędne pytania trafiły do „Moje błędy”.</p>` : '<p>Bezbłędnie! 🎉</p>'}
+      <p class="result-actions"><button class="btn primary" id="qAgain">Jeszcze raz</button>
+      ${o.lesson ? `<a class="btn" href="#lekcja/${o.lesson}">↩ Wróć do lekcji</a>${pct >= 80 && next ? `<a class="btn primary" href="#lekcja/${next.id}">Następna lekcja ➜</a>` : ''}` : '<button class="btn" id="qBack">Ustawienia</button>'}
+      <a class="btn" href="#nauka">🎓 Nauka</a></p>
     </div>`;
-    $('#qAgain').onclick = () => $('#qStart').click();
-    $('#qBack').onclick = () => { $('#quizGame').classList.add('hidden'); $('#quizSetup').classList.remove('hidden'); bestTxt(); };
+    $('#qAgain').onclick = () => startQuiz(o.specs && !o.mistakesMode ? o : { ...o, specs: o.mistakesMode ? shuffle(mistakes).slice(0, 20) : null });
+    if ($('#qBack')) $('#qBack').onclick = () => { $('#quizGame').classList.add('hidden'); $('#quizSetup').classList.remove('hidden'); bestTxt(); };
   };
+
+  // ═════════ NAUKA: ścieżka i panel ═════════
+  const LESSON_REGIONS = ['Europa', 'Ameryka Płn.', 'Ameryka Płd.', 'Azja', 'Oceania', 'Afryka'];
+  // grupy krajów, które łatwo pomylić — uczysz się je odróżniać
+  const GROUPS = [
+    ['Europa', 'Polska i sąsiedzi', 'pl cz sk de lt'], ['Europa', 'Europa Zachodnia', 'fr be nl lu ch at'], ['Europa', 'Wyspy Brytyjskie i Iberia', 'gb ie es pt ad im'],
+    ['Europa', 'Skandynawia', 'se no fi dk is fo'], ['Europa', 'Bałtyk i Wschód', 'ee lv ru ua by'], ['Europa', 'Bałkany Zachodnie', 'si hr rs me mk al'],
+    ['Europa', 'Południowy Wschód', 'hu ro bg gr tr cy'], ['Europa', 'Włochy i Śródziemnomorze', 'it mt sm mc gi li'],
+    ['Ameryka Płn.', 'USA i Kanada', 'us ca'], ['Ameryka Płn.', 'Meksyk, Ameryka Środkowa i Karaiby', 'mx gt cr pa do pr'],
+    ['Ameryka Płd.', 'Południe kontynentu', 'br ar uy cl'], ['Ameryka Płd.', 'Andy', 'co ec pe bo'],
+    ['Azja', 'Azja Wschodnia', 'jp kr tw hk mo cn'], ['Azja', 'Azja Południowo-Wschodnia', 'th kh la vn'], ['Azja', 'Wyspy i Półwysep Malajski', 'id my sg ph'],
+    ['Azja', 'Subkontynent indyjski', 'in bd lk np bt pk'], ['Azja', 'Bliski Wschód', 'il jo lb ae qa om'], ['Azja', 'Azja Centralna', 'mn kz kg'],
+    ['Oceania', 'Australia i Nowa Zelandia', 'au nz'],
+    ['Afryka', 'Południe Afryki', 'za ls sz bw na'], ['Afryka', 'Afryka Wschodnia', 'ke ug rw tz mg'], ['Afryka', 'Afryka Zachodnia i Północna', 'ng gh sn ml tn eg'],
+  ];
+  const LESSONS = [];
+  const used = new Set();
+  for (const [r, title, ids] of GROUPS) {
+    const cs = ids.split(' ').map(id => byId[id]).filter(c => c && !c.minor && c.region === r && !used.has(c.id));
+    if (cs.length < 2) continue;
+    cs.forEach(c => used.add(c.id));
+    LESSONS.push({ id: fold(title).replace(/[^a-z]/g, '').slice(0, 24), region: r, title, countries: cs });
+  }
+  for (const r of LESSON_REGIONS) { // reszta, której nie ma w grupach
+    const rest = C.filter(c => c.region === r && !c.minor && !used.has(c.id));
+    for (let i = 0; i < rest.length; i += 5) LESSONS.push({ id: fold(r).replace(/[^a-z]/g, '') + 'x' + i, region: r, title: `${r} — pozostałe`, countries: rest.slice(i, i + 5) });
+  }
+  LESSONS.sort((a, b) => LESSON_REGIONS.indexOf(a.region) - LESSON_REGIONS.indexOf(b.region));
+  LESSONS.forEach((l, i) => { l.n = LESSONS.filter((x, j) => j <= i && x.region === l.region).length; });
+  const lessonById = Object.fromEntries(LESSONS.map(l => [l.id, l]));
+  const nextLesson = id => LESSONS[LESSONS.findIndex(l => l.id === id) + 1];
+  const lessonPct = id => store.get('lessons', {})[id];
+
+  function renderNauka() {
+    const t = act[today()] || 0, st = streak();
+    const dueCount = allCards.filter(x => isDue(x.id)).length;
+    const L = store.get('lessons', {});
+    const nextL = LESSONS.find(l => !(L[l.id] >= 80)) || LESSONS[0];
+    const doneL = LESSONS.filter(l => L[l.id] >= 80).length;
+    const regionStats = REGIONS.map(r => {
+      const cards = allCards.filter(x => x.c.region === r); const m = cards.filter(x => mastered(x.id)).length;
+      return `<div class="rstat"><span>${r}</span><div class="progress"><div style="width:${cards.length ? m / cards.length * 100 : 0}%"></div></div><small>${m}/${cards.length}</small></div>`;
+    }).join('');
+    const days = Array.from({ length: 14 }, (_, i) => today() - 13 + i).map(d => `<span class="day ${act[d] >= GOAL ? 'full' : act[d] ? 'some' : ''}" title="${act[d] || 0} odpowiedzi"></span>`).join('');
+    $('#v-nauka').innerHTML = `
+      <div class="hero hero-sm">
+        <h1>Cześć! Gotowy na trening? 🌍</h1>
+        <div class="stats4">
+          <div class="stat"><b>🔥 ${st}</b><small>${st === 1 ? 'dzień' : 'dni'} z rzędu</small></div>
+          <div class="stat"><b>${t}/${GOAL}</b><small>dzisiejszy cel</small><div class="progress light"><div style="width:${Math.min(100, t / GOAL * 100)}%"></div></div></div>
+          <div class="stat"><b>🔁 ${dueCount}</b><small>do powtórki</small></div>
+          <div class="stat"><b>🎓 ${doneL}/${LESSONS.length}</b><small>lekcji zaliczonych</small></div>
+        </div>
+        <div class="days" title="Ostatnie 14 dni">${days}</div>
+      </div>
+      <div class="actions-grid">
+        <a class="action big" href="#lekcja/${nextL.id}"><span class="ai">▶️</span><b>Kontynuuj ścieżkę</b><small>Lekcja: ${esc(nextL.title)} — ${nextL.countries.map(c => esc(c.name)).join(', ')}</small></a>
+        <button class="action" id="goReview"><span class="ai">🔁</span><b>Powtórki na dziś</b><small>${dueCount ? dueCount + ' kart czeka' : 'brak zaległych — weź nowe karty'}</small></button>
+        <button class="action" id="goPhoto"><span class="ai">📸</span><b>Zgadnij ze zdjęcia</b><small>10 zdjęć jak w GeoGuessr</small></button>
+        <button class="action" id="goMix"><span class="ai">🎲</span><b>Szybki quiz</b><small>10 mieszanych pytań</small></button>
+        <button class="action" id="goMistakes" ${mistakes.length ? '' : 'disabled'}><span class="ai">❌</span><b>Moje błędy</b><small>${mistakes.length ? mistakes.length + ' do poprawy' : 'brak — tak trzymaj!'}</small></button>
+      </div>
+      <h2 class="vtitle">Ścieżka nauki</h2>
+      <p class="lead">Każda lekcja to grupa krajów, które łatwo ze sobą pomylić. Przejrzyj karty, przećwicz fiszki i zalicz test (80%) — nauczysz się je odróżniać.</p>
+      ${LESSON_REGIONS.map(r => `<h3 class="region-title">${r}</h3><div class="lessons">${LESSONS.filter(l => l.region === r).map(l => {
+        const pc = L[l.id]; const st = pc >= 80 ? 'done' : pc != null ? 'tried' : l.id === nextL.id ? 'next' : '';
+        return `<a class="lesson ${st}" href="#lekcja/${l.id}"><div class="lnum">${pc >= 80 ? '✓' : l.n}</div><div class="lbody"><b class="ltitle">${esc(l.title)}</b><div class="lflags">${l.countries.map(c => flag(c.id, 'sm')).join('')}</div><small>${l.countries.map(c => esc(c.name)).join(', ')}</small></div>${pc != null ? `<span class="lpct">${pc}%</span>` : ''}</a>`;
+      }).join('')}</div>`).join('')}
+      <h2 class="vtitle">Opanowanie wskazówek</h2>
+      <div class="card rstats">${regionStats}<p class="muted small">Wskazówka jest opanowana po 3 poprawnych powtórkach w fiszkach.</p></div>`;
+    $('#goReview').onclick = () => { fc.only = null; fc.extra = false; Object.assign(fcSet, { region: 'all', cat: 'all', mode: 'clue' }); $('#fcRegion').value = 'all'; $('#fcCat').value = 'all'; $('#fcMode').value = 'clue'; location.hash = 'fiszki'; fcNext(); };
+    $('#goPhoto').onclick = () => { location.hash = 'quiz'; startQuiz({ pool: C.filter(c => !c.minor), n: 10, types: ['photo'], title: 'Zdjęcia' }); };
+    $('#goMix').onclick = () => { location.hash = 'quiz'; startQuiz({ pool: C.filter(c => !c.minor), n: 10, types: ['clue', 'clue', 'photo', 'flag', 'drive'], title: 'Szybki quiz' }); };
+    $('#goMistakes').onclick = () => { location.hash = 'quiz'; $('#qMistakes').click(); };
+  }
+
+  function renderLesson(id) {
+    const l = lessonById[id], pc = lessonPct(id), i = LESSONS.indexOf(l);
+    const prev = LESSONS[i - 1], next = LESSONS[i + 1];
+    $('#v-lekcja').innerHTML = `
+      <a class="back" href="#nauka">← Nauka</a>
+      <div class="cp-head lesson-head"><div><div class="tags"><span class="tag">${l.region}</span><span class="tag">lekcja ${l.n}</span>${pc != null ? `<span class="tag ${pc >= 80 ? 'd1' : ''}">wynik ${pc}%</span>` : ''}</div>
+        <h1>${esc(l.title)}</h1><p class="cp-summary">${l.countries.length} krajów. Krok 1: poznaj je. Krok 2: fiszki. Krok 3: test (80% = zaliczone).</p></div></div>
+      <h3 class="phead">① Poznaj kraje</h3>
+      <div class="lcountries">${l.countries.map(c => `<a class="lcard" href="#kraj/${c.id}">${flag(c.id, 'lg')}<div><b>${esc(c.name)}</b><p>${esc(c.summary)}</p>${(c.tips || []).slice(0, 2).map(t => `<div class="tip small">💡 ${esc(t)}</div>`).join('')}<span class="more">Otwórz kartę ze zdjęciami →</span></div></a>`).join('')}</div>
+      <h3 class="phead">② Przećwicz</h3>
+      <div class="actions-grid">
+        <button class="action" id="lFc"><span class="ai">🃏</span><b>Fiszki z lekcji</b><small>wskazówka → kraj</small></button>
+        <button class="action" id="lPhoto"><span class="ai">📸</span><b>Zdjęcia z lekcji</b><small>10 zdjęć z tych krajów</small></button>
+      </div>
+      <h3 class="phead">③ Sprawdź się</h3>
+      <button class="btn primary big" id="lTest">🎯 Test lekcji — 12 pytań</button>
+      <div class="cp-nav">${prev ? `<a href="#lekcja/${prev.id}">← ${esc(prev.title)}</a>` : '<span></span>'}${next ? `<a class="next" href="#lekcja/${next.id}">${esc(next.title)} →</a>` : ''}</div>`;
+    const ids = l.countries.map(c => c.id);
+    $('#lFc').onclick = () => { fc.only = ids; fc.extra = true; fcSet.mode = 'clue'; $('#fcMode').value = 'clue'; location.hash = 'fiszki'; fcNext(); };
+    $('#lPhoto').onclick = () => { location.hash = 'quiz'; startQuiz({ pool: l.countries, n: 10, types: ['photo'], title: l.title }); };
+    $('#lTest').onclick = () => { location.hash = 'quiz'; startQuiz({ pool: l.countries, n: 12, types: ['clue', 'clue', 'clue', 'photo', 'photo'], title: `Test: ${l.title}`, lesson: id }); };
+  }
 
   // ── klawiatura ──
   document.addEventListener('keydown', e => {
@@ -560,7 +759,7 @@
       if (e.key === 'Escape') lbClose(); else if (e.key === 'ArrowLeft') lbMove(-1); else if (e.key === 'ArrowRight') lbMove(1);
       return;
     }
-    const v = (location.hash.slice(1) || 'kraje').split('/')[0];
+    const v = (location.hash.slice(1) || 'nauka').split('/')[0];
     if (v === 'fiszki') {
       if (e.code === 'Space') { e.preventDefault(); fcFlip(); }
       else if (e.key === '1' || e.key === 'ArrowLeft') fcAnswer(false);
@@ -577,7 +776,7 @@
 
   // ── start ──
   renderGrid(); renderCompare(); renderGuides(); bestTxt();
-  if (!location.hash) location.replace('#' + store.get('tab', 'kraje'));
+  if (!location.hash) location.replace('#' + store.get('tab', 'nauka'));
   route();
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
