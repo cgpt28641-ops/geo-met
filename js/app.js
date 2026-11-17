@@ -27,7 +27,7 @@
   const esc = s => String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   const shuffle = a => { a = [...a]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
   const pick = a => a[Math.floor(Math.random() * a.length)];
-  const flag = (id, cls = '') => `<img class="flag ${cls}" src="https://flagcdn.com/w160/${id}.png" alt="" loading="lazy" decoding="async">`;
+  const flag = (id, cls = '') => `<img class="flag ${cls}" src="https://flagcdn.com/w160/${id}.png" alt="" loading="lazy" onerror="this.closest('button')?.remove()" decoding="async">`;
   const fold = s => String(s).toLowerCase().replace(/ł/g, 'l').normalize('NFD').replace(/[̀-ͯ]/g, '');
   const driveTxt = d => d === 'L' ? 'lewostronny' : 'prawostronny';
   const allClues = c => Object.entries(c.clues).flatMap(([k, arr]) => arr.map(v => [k, v]));
@@ -224,7 +224,7 @@
           if (!items.length) continue;
           html += `<h3 class="phead">${icon} ${label} <span>${items.length}</span></h3><div class="ggrid">` + items.map(x => {
             lb.push({ src: GH_IMG(x[1]), cap: `${label}${x[3] ? ' · ' + x[3] : ''}`, map: x[2] });
-            return `<button class="gthumb" data-lb="${lb.length - 1}"><img src="${esc(GH_IMG(x[1]))}" alt="" loading="lazy" decoding="async">${x[3] ? `<span>${esc(x[3])}</span>` : ''}</button>`;
+            return `<button class="gthumb" data-lb="${lb.length - 1}"><img src="${esc(GH_IMG(x[1]))}" alt="" loading="lazy" onerror="this.closest('button')?.remove()" decoding="async">${x[3] ? `<span>${esc(x[3])}</span>` : ''}</button>`;
           }).join('') + '</div>';
         }
         body.innerHTML = html ? `<p class="muted small">Zdjęcia z GeoHints — stuknij, aby powiększyć.</p>${html}` : '<div class="empty">Brak zdjęć GeoHints dla tego kraju.</div>';
@@ -241,7 +241,7 @@
       const open = () => '<div class="pgrid">';
       for (const [, head, imgs, map, t] of items) {
         if (head !== last) { if (last !== null) html += '</div>'; html += (head ? `<h3 class="phead">${esc(head)}</h3>` : '') + open(); last = head; }
-        const pics = imgs.map(p => { lb.push({ src: PLONK_IMG(p, 1200), cap: t, map }); return `<button class="pimg" data-lb="${lb.length - 1}"><img src="${esc(PLONK_IMG(p))}" alt="" loading="lazy" decoding="async"></button>`; }).join('');
+        const pics = imgs.map(p => { lb.push({ src: PLONK_IMG(p, 1200), cap: t, map }); return `<button class="pimg" data-lb="${lb.length - 1}"><img src="${esc(PLONK_IMG(p))}" alt="" loading="lazy" onerror="this.closest('button')?.remove()" decoding="async"></button>`; }).join('');
         html += `<div class="pcard ${imgs.length ? '' : 'noimg'}">${pics}${t || map ? `<div class="ptext">${txt(t)}${mapLink(map)}</div>` : ''}</div>`;
       }
       html += '</div>';
@@ -263,7 +263,7 @@
     lbEl.querySelector('figcaption').innerHTML = `<span class="lb-n">${lb.i + 1} / ${lb.list.length}</span> ${txt(it.cap || '')} ${mapLink(it.map)}`;
   }
   function bindLightbox(root, list) {
-    root.querySelectorAll('[data-lb]').forEach(b => b.onclick = () => { lb.list = list; lb.i = +b.dataset.lb; lbShow(); lbEl.classList.remove('hidden'); document.body.style.overflow = 'hidden'; });
+    root.querySelectorAll('[data-lb]').forEach(b => b.onclick = e => { e.stopPropagation(); lb.list = list; lb.i = +b.dataset.lb; lbShow(); lbEl.classList.remove('hidden'); document.body.style.overflow = 'hidden'; });
   }
   const lbClose = () => { lbEl.classList.add('hidden'); lbEl.querySelector('img').src = ''; document.body.style.overflow = ''; };
   const lbMove = d => { lb.i = (lb.i + d + lb.list.length) % lb.list.length; lbShow(); };
@@ -328,7 +328,7 @@
           const it = all.filter(x => x[0] === c.id);
           if (!it.length) return '';
           const lim = cmpOpen.has(c.id) ? it.length : 6;
-          const thumbs = it.slice(0, lim).map(x => { lbList.push({ src: GH_IMG(x[1]), cap: `${c.name} · ${lbl}${x[3] ? ' · ' + x[3] : ''}`, map: x[2] }); return `<button class="gthumb" data-lb="${lbList.length - 1}"><img src="${esc(GH_IMG(x[1]))}" alt="" loading="lazy" decoding="async">${x[3] ? `<span>${esc(x[3])}</span>` : ''}</button>`; }).join('');
+          const thumbs = it.slice(0, lim).map(x => { lbList.push({ src: GH_IMG(x[1]), cap: `${c.name} · ${lbl}${x[3] ? ' · ' + x[3] : ''}`, map: x[2] }); return `<button class="gthumb" data-lb="${lbList.length - 1}"><img src="${esc(GH_IMG(x[1]))}" alt="" loading="lazy" onerror="this.closest('button')?.remove()" decoding="async">${x[3] ? `<span>${esc(x[3])}</span>` : ''}</button>`; }).join('');
           return `<div class="gcountry"><a class="gname" href="#kraj/${c.id}">${flag(c.id, 'sm')} ${esc(c.name)} <span>${it.length}</span></a><div class="ggrid">${thumbs}</div>${it.length > lim ? `<button class="link" data-more="${c.id}">Pokaż wszystkie (${it.length})</button>` : ''}</div>`;
         }).join('');
         if (rows) html += `<h3 class="region-title">${r}</h3>${rows}`;
@@ -384,11 +384,13 @@
     let r = Math.random() * weights.reduce((a, b) => a + b, 0), card = pool[0];
     for (let i = 0; i < pool.length; i++) { r -= weights[i]; if (r <= 0) { card = pool[i]; break; } }
     fc.card = card; fc.last = [card.id, ...fc.last].slice(0, 6);
-    const country = `${flag(card.c.id, 'xl')}<div style="font-size:1.5rem;font-weight:800">${esc(card.c.name)}</div><div class="fc-hint">${card.c.region} · ruch ${driveTxt(card.c.drive)}</div>`;
+    const country = `${flag(card.c.id, fcSet.mode === 'clue' ? 'lg' : 'xl')}<div style="font-size:1.5rem;font-weight:800">${esc(card.c.name)}</div><div class="fc-hint">${card.c.region} · ruch ${driveTxt(card.c.drive)}</div>`;
     if (fcSet.mode === 'clue') {
       const lab = CATS[card.k];
       $('#fcFront').innerHTML = `<div class="fc-cat">${lab.icon} ${lab.label}</div><div>${esc(card.v)}</div><div class="fc-hint">Jaki to kraj? Stuknij, aby odwrócić</div>`;
-      $('#fcBack').innerHTML = country;
+      $('#fcBack').innerHTML = country + '<div class="qex fc-ex" id="fcEx"></div>';
+      const cid = card.id;
+      examplesFor(card.c, card.k, card.v).then(list => { const el = $('#fcEx'); if (el && fc.card && fc.card.id === cid) renderExamples(el, list.slice(0, 2), false); });
     } else {
       const items = card.k === 'all' ? allClues(card.c).slice(0, 8) : (card.c.clues[card.k] || []).map(v => [card.k, v]);
       $('#fcFront').innerHTML = `${country}<div class="fc-cat">${card.k === 'all' ? 'Jak go rozpoznać?' : CATS[card.k].icon + ' ' + CATS[card.k].label + '?'}</div>`;
@@ -420,6 +422,49 @@
     if (Math.abs(dx) > 70) { e.preventDefault(); fcAnswer(dx > 0); }
   });
 
+  // ── przykładowe zdjęcia do wskazówki (quiz, fiszki) ──
+  const STOPW = new Set('ale bez dla jak jest lub nie oraz pod przy przez tak tam ten tej tez też tym tylko czesto czasem bardzo zwykle sie się the and are with ich jego jej ich ktore które gdzie albo wiele'.split(' '));
+  const words = s => fold(s || '').split(/[^a-z0-9]+/).filter(w => w.length > 2 && !STOPW.has(w));
+  const CAT_GAL = { slupki: ['bollards'], tablice: ['licensePlates'], slupy: ['utilityPoles'], kamera: ['googleVehicles_cars', 'followCars'],
+    znaki: ['signs_chevrons', 'signs_stop', 'signs_yield', 'signs_pedestrian', 'signs_directions', 'signs_citySigns', 'signs_signPosts', 'signs_railwayCrossing', 'signs_speed', 'signs_busStop', 'signs_animalWarning'] };
+  const SIGN_KW = { signs_chevrons: 'szewron', signs_stop: 'stop', signs_yield: 'ustap', signs_pedestrian: 'przejsci', signs_directions: 'drogowskaz', signs_citySigns: 'miejscowo', signs_signPosts: 'slup', signs_railwayCrossing: 'kolej', signs_speed: 'predkos', signs_busStop: 'przystan', signs_animalWarning: 'zwierz' };
+  async function examplesFor(c, k, v) {
+    const out = [];
+    try {
+      const d = await loadJSON(`data/plonk/${c.id}.json`);
+      if (v) {
+        const vw = new Set(words(v)); let best = null, bs = 0;
+        for (const it of d.items) {
+          if (!it[2].length || it[0] > 2) continue;
+          const w = words(it[4]); let hit = 0; for (const x of new Set(w)) if (vw.has(x)) hit++;
+          const sc = hit < 2 ? 0 : hit / Math.sqrt(w.length + 4) * (it[0] === 1 ? 1.25 : 1);
+          if (sc > bs) { bs = sc; best = it; }
+        }
+        if (best && bs > 0.45) out.push({ thumb: PLONK_IMG(best[2][0]), src: PLONK_IMG(best[2][0], 1200), cap: best[4], map: best[3] });
+      } else {
+        const first = d.items.find(it => it[0] === 1 && it[2].length);
+        if (first) out.push({ thumb: PLONK_IMG(first[2][0]), src: PLONK_IMG(first[2][0], 1200), cap: first[4] || c.name, map: first[3] });
+      }
+    } catch { /* brak danych */ }
+    let keys = CAT_GAL[k] || [];
+    if (k === 'znaki') { const fv = fold(v); keys = keys.filter(g => fv.includes(SIGN_KW[g])); }
+    if (keys.length && out.length < 3) {
+      try {
+        const G = await loadJSON('data/gallery.json');
+        const items = keys.flatMap(g => (G[g] || []).filter(x => x[0] === c.id).map(x => [g, ...x]));
+        for (const [g, , img, map, note] of shuffle(items).slice(0, 3 - out.length))
+          out.push({ thumb: GH_IMG(img), src: GH_IMG(img), cap: `${c.name} · ${GAL[g][1]}${note ? ' · ' + note : ''}`, map });
+      } catch { /* brak galerii */ }
+    }
+    return out;
+  }
+  function renderExamples(el, list, withCaption = true) {
+    if (!list.length) { el.innerHTML = ''; return; }
+    el.innerHTML = `<div class="qex-title">Przykład</div><div class="qex-grid">${list.map((x, i) => `<button class="qex-img" data-lb="${i}"><img src="${esc(x.thumb)}" alt="" loading="lazy" onerror="this.closest('button')?.remove()"></button>`).join('')}</div>` +
+      (withCaption && list[0].cap && list[0].thumb.includes('plonkit') ? `<div class="qex-cap">${txt(list[0].cap)}</div>` : '');
+    bindLightbox(el, list);
+  }
+
   // ═════════ QUIZ ═════════
   const q = { list: [], i: 0, score: 0, answered: false, mistakes: [] };
   const qKey = () => `${$('#qType').value}|${$('#qCat').value}|${$('#qRegion').value}`;
@@ -441,7 +486,7 @@
       const cands = pool.filter(c => cat === 'all' ? allClues(c).length : (c.clues[cat] || []).length);
       const c = pick(cands);
       const [k, v] = pick(cat === 'all' ? allClues(c) : c.clues[cat].map(v => [cat, v]));
-      return { key: v, prompt: `<div class="fc-cat">${CATS[k].icon} ${CATS[k].label}</div><div>${esc(v)}</div><div class="muted small">Który to kraj?</div>`, options: shuffle([c, ...distractors(c, 3)]).map(x => x.name), answer: c.name, country: c };
+      return { k, v, key: v, prompt: `<div class="fc-cat">${CATS[k].icon} ${CATS[k].label}</div><div>${esc(v)}</div><div class="muted small">Który to kraj?</div>`, options: shuffle([c, ...distractors(c, 3)]).map(x => x.name), answer: c.name, country: c };
     }
     const c = pick(pool);
     if (type === 'drive') return { key: 'd' + c.id, prompt: `${flag(c.id, 'xl')}<div>Po której stronie jeździ się w kraju <b>${esc(c.name)}</b>?</div>`, options: ['⬅️ Lewostronny', '➡️ Prawostronny'], answer: c.drive === 'L' ? '⬅️ Lewostronny' : '➡️ Prawostronny', country: c };
@@ -484,6 +529,10 @@
     }
     $('#qScore').textContent = `✅ ${q.score}`;
     $('#qNext').classList.remove('hidden');
+    const ex = document.createElement('div'); ex.className = 'qex'; $('#qFeedback').appendChild(ex);
+    const qi = q.i;
+    ex.innerHTML = '<div class="qex-title muted">Szukam przykładu…</div>';
+    examplesFor(cur.country, cur.k, cur.v).then(list => { if (q.i === qi && ex.isConnected) renderExamples(ex, list); });
   }
   $('#qNext').onclick = () => {
     q.i++;
