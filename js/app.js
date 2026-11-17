@@ -47,9 +47,9 @@
   let currentRoute = '';
   function route() {
     const h = location.hash.slice(1) || 'nauka';
-    const [view, arg] = h.split('/');
+    const [view, arg, ...rest] = h.split('/');
     if (currentRoute) scrollPos[currentRoute] = scrollY;
-    const tab = view === 'kraj' ? 'kraje' : view === 'lekcja' || view === 'moje' ? 'nauka' : view;
+    const tab = view === 'kraj' ? 'kraje' : ['lekcja', 'moje', 'gra'].includes(view) ? 'nauka' : view;
     if (view !== 'kraj') document.title = 'GeoMeta — meta GeoGuessr po polsku';
     $$('#tabs a').forEach(a => a.classList.toggle('active', a.dataset.tab === tab));
     $$('.view').forEach(v => v.classList.toggle('active', v.id === 'v-' + view));
@@ -57,11 +57,13 @@
     else if (view === 'kraj') return (location.hash = 'kraje');
     if (view === 'nauka') renderNauka();
     if (view === 'moje') renderMoje();
+    if (view === 'gra') renderGra();
+    if (view === 'porownaj' && arg === 'vs') { cmpMode = 'vs'; if (byId[rest[0]]) vsA = rest[0]; vsB = byId[rest[1]] ? rest[1] : partnerOf(vsA, vsB); renderCompare(); }
     if (view === 'lekcja') { if (lessonById[arg]) renderLesson(arg); else return (location.hash = 'nauka'); }
     if (view === 'fiszki') fcNext();
     if (view === 'poradniki' && arg) { const d = document.getElementById('g-' + arg); if (d) { d.open = true; setTimeout(() => d.scrollIntoView({ block: 'start' }), 30); } }
     currentRoute = h;
-    if (!(view === 'poradniki' && arg)) requestAnimationFrame(() => scrollTo(0, ['kraj', 'lekcja', 'quiz', 'moje'].includes(view) ? 0 : (scrollPos[h] || 0)));
+    if (!(view === 'poradniki' && arg)) requestAnimationFrame(() => scrollTo(0, ['kraj', 'lekcja', 'quiz', 'moje', 'gra'].includes(view) ? 0 : (scrollPos[h] || 0)));
     if (['nauka', 'kraje', 'porownaj', 'poradniki'].includes(view)) store.set('tab', view);
   }
   addEventListener('hashchange', route);
@@ -114,7 +116,10 @@
       if (rows.length) hits = `<h3 class="region-title">Pasujące wskazówki <span>${rows.length}${rows.length >= 12 ? '+' : ''}</span></h3><div class="hits">` +
         rows.map(r => `<a class="hit" href="#kraj/${r.c.id}">${flag(r.c.id, 'sm')}<div><b>${esc(r.c.name)} · <span>${CATS[r.k].icon} ${CATS[r.k].short}</span></b><span>${highlight(r.v, filt.q)}</span></div></a>`).join('') + '</div>';
     }
+    if (filt.q && filt.q.length >= 3) hits += `<div class="deep"><button class="btn" id="deepBtn">🔎 Szukaj „${esc(filt.q)}” w ${'5000+'} opisach zdjęć</button><div id="deepRes"></div></div>`;
     $('#searchHits').innerHTML = hits;
+    if ($('#deepBtn')) { $('#deepBtn').onclick = () => deepSearch(filt.q); if (deepIndex) deepSearch(filt.q); }
+    renderCountryMap(ok);
 
     const card = c => `<a class="ccard ${learned.has(c.id) ? 'learned' : ''}" href="#kraj/${c.id}">
         <div class="ccard-head">${flag(c.id)}<div><h3>${esc(c.name)}</h3><div class="sub">${c.drive === 'L' ? '⬅️ lewostronny' : '➡️ prawostronny'} · ${c.domain}</div></div></div>
@@ -135,6 +140,59 @@
     const done = C.filter(c => !c.minor && learned.has(c.id)).length;
     $('#learnedBar').style.width = (done / total * 100) + '%';
     $('#learnedTxt').textContent = `Opanowane: ${done}/${total}`;
+  }
+
+  // ── wyszukiwanie w opisach zdjęć (Plonk It, ładowane na żądanie) ──
+  let deepIndex = null, deepLoading = null;
+  function loadDeepIndex(onProgress) {
+    if (deepIndex) return Promise.resolve(deepIndex);
+    if (deepLoading) return deepLoading;
+    let done = 0;
+    deepLoading = Promise.all(C.map(c => loadJSON(`data/plonk/${c.id}.json`).then(d => { onProgress && onProgress(++done); return d.items.map(it => ({ c, step: it[0], head: it[1], imgs: it[2], map: it[3], t: it[4], f: fold(it[4] + ' ' + it[1]) })); }).catch(() => [])))
+      .then(arrs => (deepIndex = arrs.flat()));
+    return deepLoading;
+  }
+  function deepSearch(q) {
+    const box = $('#deepRes'); if (!box) return;
+    box.innerHTML = '<div class="loading">Wczytuję opisy… <span id="deepProg">0</span>/' + C.length + '</div>';
+    loadDeepIndex(n => { const el = $('#deepProg'); if (el) el.textContent = n; }).then(idx => {
+      if (filt.q !== q || !$('#deepRes')) return;
+      const res = idx.filter(x => x.f.includes(q) && (filt.region === 'all' || x.c.region === filt.region));
+      const lb = [];
+      const snip = t => { const i = fold(t).indexOf(q); const a = Math.max(0, i - 80); return (a ? '…' : '') + t.slice(a, a + 260) + (t.length > a + 260 ? '…' : ''); };
+      $('#deepRes').innerHTML = `<h3 class="region-title">W opisach zdjęć <span>${res.length}${res.length > 60 ? ' (pierwsze 60)' : ''}</span></h3>` + (res.length ? `<div class="pgrid">${res.slice(0, 60).map(x => {
+        const pics = x.imgs.slice(0, 1).map(pth => { lb.push({ src: PLONK_IMG(pth, 1200), cap: `${x.c.name}: ${x.t}`, map: x.map }); return `<button class="pimg" data-lb="${lb.length - 1}"><img src="${esc(PLONK_IMG(pth))}" alt="" loading="lazy"></button>`; }).join('');
+        return `<div class="pcard">${pics}<div class="ptext"><a class="gname" href="#kraj/${x.c.id}">${flag(x.c.id, 'sm')} ${esc(x.c.name)} <span>${['', 'rozpoznanie', 'regiony', 'szczegóły'][x.step]}${x.head ? ' · ' + esc(x.head) : ''}</span></a>${highlight(snip(x.t), q)}</div></div>`;
+      }).join('')}</div>` : '<div class="empty">Brak wyników w opisach zdjęć.</div>');
+      bindLightbox($('#deepRes'), lb);
+    });
+  }
+
+  // ── mapa w zakładce Kraje ──
+  let viewMode = store.get('vm', 'list'), countryMap = null;
+  $$('[data-vm]').forEach(b => b.onclick = () => { viewMode = b.dataset.vm; store.set('vm', viewMode); renderGrid(); });
+  function masteryOf(c) {
+    if (learned.has(c.id)) return 3;
+    const cards = allCards.filter(x => x.c === c);
+    if (!cards.length) return 0;
+    const m = cards.filter(x => mastered(x.id)).length / cards.length, seen = cards.filter(x => srs[x.id]).length;
+    return m >= 0.5 ? 2 : seen ? 1 : 0;
+  }
+  function renderCountryMap(ok) {
+    $$('[data-vm]').forEach(b => b.classList.toggle('active', b.dataset.vm === viewMode));
+    const isMap = viewMode === 'map';
+    $('#countryMapWrap').classList.toggle('hidden', !isMap);
+    $('#countryGrid').classList.toggle('hidden', isMap);
+    if (!isMap) return;
+    const fill = code => { const c = byId[code]; if (!c) return null; return ok(c) ? `var(--m${masteryOf(c)})` : 'var(--m-off)'; };
+    if (countryMap) { countryMap.fillFn = fill; countryMap.api.redraw(); return; }
+    const el = $('#countryMap');
+    el.innerHTML = '<div class="loading">Ładowanie mapy…</div>';
+    GMMap.load().then(world => {
+      const holder = { fillFn: fill };
+      holder.api = GMMap.render(el, world, { fill: c => holder.fillFn(c), title: c => byId[c] ? byId[c].name : c, onCountry: c => { if (byId[c]) location.hash = 'kraj/' + c; } });
+      countryMap = holder;
+    }).catch(() => { el.innerHTML = '<div class="empty">Nie udało się wczytać mapy.</div>'; });
   }
 
   // ═════════ STRONA KRAJU ═════════
@@ -174,6 +232,7 @@
       <div class="cp-actions">
         <button class="btn ${learned.has(id) ? '' : 'primary'}" id="toggleLearned">${learned.has(id) ? '↩️ Cofnij „opanowane”' : '✅ Opanowałem ten kraj'}</button>
         <button class="btn" id="drillCountry">🃏 Fiszki z tego kraju</button>
+        <a class="btn" href="#porownaj/vs/${id}">🆚 Porównaj z…</a>
         <a class="btn" href="https://www.plonkit.net/guide" target="_blank" rel="noopener">Plonk It ↗</a>
         <a class="btn" href="https://www.google.com/maps/search/${encodeURIComponent(c.name)}" target="_blank" rel="noopener">Mapa ↗</a>
       </div>
@@ -294,9 +353,10 @@
   let cmpCat = store.get('cmpCat', 'slupki'), cmpRegion = 'all', cmpMode = store.get('cmpMode', 'txt'), cmpGal = store.get('cmpGal', 'bollards');
   const cmpOpen = new Set();
   function renderCompare() {
-    $('#compareMode').innerHTML = `<button class="seg ${cmpMode === 'txt' ? 'active' : ''}" data-cm="txt">📝 Opisy</button><button class="seg ${cmpMode === 'img' ? 'active' : ''}" data-cm="img">🖼️ Zdjęcia</button>`;
+    $('#compareMode').innerHTML = `<button class="seg ${cmpMode === 'txt' ? 'active' : ''}" data-cm="txt">📝 Opisy</button><button class="seg ${cmpMode === 'img' ? 'active' : ''}" data-cm="img">🖼️ Zdjęcia</button><button class="seg ${cmpMode === 'vs' ? 'active' : ''}" data-cm="vs">🆚 Dwa kraje</button>`;
     $$('[data-cm]').forEach(b => b.onclick = () => { cmpMode = b.dataset.cm; store.set('cmpMode', cmpMode); renderCompare(); });
     if (cmpMode === 'img') return renderCompareImg();
+    if (cmpMode === 'vs') return renderCompareVs();
     $('#compareChips').innerHTML = Object.entries(cmpCats).map(([k, v]) => `<button class="chip ${k === cmpCat ? 'active' : ''}" data-cmp="${k}">${v.icon} ${v.short}</button>`).join('');
     $('#compareRegions').innerHTML = ['all', ...REGIONS].map(r => `<button class="chip ${r === cmpRegion ? 'active' : ''}" data-cr="${r}">${r === 'all' ? 'Wszystkie regiony' : r}</button>`).join('');
     $$('[data-cmp]').forEach(b => b.onclick = () => { cmpCat = b.dataset.cmp; store.set('cmpCat', cmpCat); renderCompare(); });
@@ -315,6 +375,38 @@
     }
     $('#compareList').innerHTML = html || '<div class="empty">Brak danych w tej kategorii.</div>';
   }
+  // pary krajów, które gracze najczęściej mylą
+  const PAIRS = 'cz-sk se-no fi-ee lt-lv rs-hr si-hr hr-me bg-mk ua-ru ru-kz at-de de-ch be-nl fr-be es-pt it-gr hu-ro ro-bg pl-cz ie-gb br-pt ar-uy cl-ar co-ec pe-bo mx-gt us-ca au-nz za-bw za-ls ls-sz ke-ug ug-rw gh-ng sn-ml th-kh kh-la my-id id-ph jp-kr tw-hk in-bd in-lk il-jo ae-qa om-ae mn-kz kz-kg tr-cy'.split(' ').map(p => p.split('-'));
+  let vsA = store.get('vsA', 'cz'), vsB = store.get('vsB', 'sk');
+  function partnerOf(a, fallback) {
+    const p = PAIRS.find(([x, y]) => x === a || y === a);
+    if (p) return p[0] === a ? p[1] : p[0];
+    if (fallback && fallback !== a) return fallback;
+    const same = C.find(c => c.region === byId[a].region && c.id !== a && !c.minor);
+    return same ? same.id : 'pl';
+  }
+  function renderCompareVs() {
+    store.set('vsA', vsA); store.set('vsB', vsB);
+    const opts = sel => C.filter(c => !c.minor || c.id === sel).map(c => `<option value="${c.id}" ${c.id === sel ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+    $('#compareChips').innerHTML = `<div class="vs-pick"><select id="vsA">${opts(vsA)}</select><span class="vs-x">vs</span><select id="vsB">${opts(vsB)}</select></div>`;
+    $('#compareRegions').innerHTML = '<span class="muted small">Często mylone:</span>' + PAIRS.map(([a, b]) => `<button class="chip ${a === vsA && b === vsB ? 'active' : ''}" data-pair="${a}-${b}">${esc(byId[a].name)} – ${esc(byId[b].name)}</button>`).join('');
+    $('#vsA').onchange = e => { vsA = e.target.value; renderCompareVs(); };
+    $('#vsB').onchange = e => { vsB = e.target.value; renderCompareVs(); };
+    $$('[data-pair]').forEach(b => b.onclick = () => { [vsA, vsB] = b.dataset.pair.split('-'); renderCompareVs(); });
+    const A = byId[vsA], B = byId[vsB];
+    const col = (c, k) => (c.clues[k] || []).length ? `<ul>${c.clues[k].map(v => `<li>${esc(v)}</li>`).join('')}</ul>` : '<p class="muted small">— brak wskazówek —</p>';
+    const facts = c => `${c.drive === 'L' ? '⬅️ lewostronny' : '➡️ prawostronny'} · ${esc(c.domain)} · ${esc(c.phone)}`;
+    const rows = Object.keys(CATS).filter(k => (A.clues[k] || []).length || (B.clues[k] || []).length).map(k => `
+      <div class="vs-row"><h3>${CATS[k].icon} ${CATS[k].label}</h3>
+        <div class="vs-cols"><div><div class="vs-who">${flag(A.id, 'sm')} ${esc(A.name)}</div>${col(A, k)}</div><div><div class="vs-who">${flag(B.id, 'sm')} ${esc(B.name)}</div>${col(B, k)}</div></div></div>`).join('');
+    $('#compareList').innerHTML = `<div class="vs-wrap">
+      <div class="vs-head"><a href="#kraj/${A.id}">${flag(A.id, 'lg')}<b>${esc(A.name)}</b><small>${facts(A)}</small></a><span class="vs-x big">vs</span><a href="#kraj/${B.id}">${flag(B.id, 'lg')}<b>${esc(B.name)}</b><small>${facts(B)}</small></a></div>
+      <div class="vs-tips">${[A, B].map(c => (c.tips || []).map(t => `<div class="tip small">💡 ${esc(t)}</div>`).join('')).join('')}</div>
+      <button class="btn primary big" id="vsQuiz">🎯 Sprawdź się: rozróżnij ${esc(A.name)} i ${esc(B.name)} (10 pytań)</button>
+      ${rows}</div>`;
+    $('#vsQuiz').onclick = () => { location.hash = 'quiz'; startQuiz({ pool: [A, B], n: 10, types: ['clue', 'clue', 'photo'], title: `${A.name} vs ${B.name}` }); };
+  }
+
   function renderCompareImg() {
     $('#compareChips').innerHTML = Object.entries(GAL).map(([k, [i, l]]) => `<button class="chip ${k === cmpGal ? 'active' : ''}" data-gal="${k}">${i} ${l}</button>`).join('');
     $('#compareRegions').innerHTML = ['all', ...REGIONS].map(r => `<button class="chip ${r === cmpRegion ? 'active' : ''}" data-cr="${r}">${r === 'all' ? 'Wszystkie regiony' : r}</button>`).join('');
@@ -712,7 +804,8 @@
       <div class="actions-grid">
         <a class="action big" href="#lekcja/${nextL.id}"><span class="ai">▶️</span><b>Kontynuuj ścieżkę</b><small>Lekcja: ${esc(nextL.title)} — ${nextL.countries.map(c => esc(c.name)).join(', ')}</small></a>
         <button class="action" id="goReview"><span class="ai">🔁</span><b>Powtórki na dziś</b><small>${dueCount ? dueCount + ' kart czeka' : 'brak zaległych — weź nowe karty'}</small></button>
-        <button class="action" id="goPhoto"><span class="ai">📸</span><b>Zgadnij ze zdjęcia</b><small>10 zdjęć jak w GeoGuessr</small></button>
+        <a class="action big game" href="#gra"><span class="ai">🎮</span><b>Zagraj jak w GeoGuessr</b><small>5 zdjęć · zgaduj na mapie · do 25 000 pkt${store.get('graBest', null) != null ? ` · rekord ${store.get('graBest')}` : ''}</small></a>
+        <button class="action" id="goPhoto"><span class="ai">📸</span><b>Zgadnij ze zdjęcia</b><small>10 zdjęć, 4 odpowiedzi</small></button>
         <button class="action" id="goMix"><span class="ai">🎲</span><b>Szybki quiz</b><small>10 mieszanych pytań</small></button>
         <button class="action" id="goMistakes" ${mistakes.length ? '' : 'disabled'}><span class="ai">❌</span><b>Moje błędy</b><small>${mistakes.length ? mistakes.length + ' do poprawy' : 'brak — tak trzymaj!'}</small></button>
       </div>
@@ -751,6 +844,98 @@
     $('#lFc').onclick = () => { fc.only = ids; fc.extra = true; fcSet.mode = 'clue'; $('#fcMode').value = 'clue'; location.hash = 'fiszki'; fcNext(); };
     $('#lPhoto').onclick = () => { location.hash = 'quiz'; startQuiz({ pool: l.countries, n: 10, types: ['photo'], title: l.title }); };
     $('#lTest').onclick = () => { location.hash = 'quiz'; startQuiz({ pool: l.countries, n: 12, types: ['clue', 'clue', 'clue', 'photo', 'photo'], title: `Test: ${l.title}`, lesson: id }); };
+  }
+
+  // ═════════ GRA: zdjęcie → kliknij na mapie (punkty jak w GeoGuessr) ═════════
+  const gra = { rounds: [], i: 0, total: 0, guess: null, answered: false, region: store.get('graRegion', 'all'), api: null };
+  const graScore = km => km <= 0 ? 5000 : Math.round(5000 * Math.exp(-km / 1492.7));
+  function renderGra() {
+    const v = $('#v-gra');
+    if (!gra.rounds.length) {
+      v.innerHTML = `<a class="back" href="#nauka">← Nauka</a>
+        <div class="card setup"><h2>🎮 Zagraj jak w GeoGuessr</h2>
+          <p class="muted">Dostajesz zdjęcie z prawdziwej wskazówki (słupek, znak, tablica, krajobraz). Kliknij na mapie, gdzie to jest, i zatwierdź. Trafiony kraj = 5000 pkt, im dalej, tym mniej.</p>
+          <label>Region <select id="graRegion">${`<option value="all">Cały świat</option>` + REGIONS.map(r => `<option ${r === gra.region ? 'selected' : ''}>${r}</option>`).join('')}</select></label>
+          <button class="btn primary big" id="graStart">Start — 5 rund ➜</button>
+          <p class="muted small">${store.get('graBest', null) != null ? `🏆 Twój rekord: ${store.get('graBest')} / 25 000` : 'Map do przybliżania: kółko myszy, dwa palce albo przyciski +/−.'}</p></div>`;
+      $('#graRegion').onchange = e => { gra.region = e.target.value; store.set('graRegion', gra.region); };
+      $('#graStart').onclick = startGra;
+      return;
+    }
+    renderGraRound();
+  }
+  async function startGra() {
+    const v = $('#v-gra');
+    v.innerHTML = '<div class="loading">Losuję zdjęcia…</div>';
+    const pool = C.filter(c => !c.minor && (gra.region === 'all' || c.region === gra.region));
+    const need = shuffle(pool).slice(0, 12), P = {};
+    await Promise.all(need.map(c => loadJSON(`data/plonk/${c.id}.json`).then(d => { P[c.id] = d; }).catch(() => {})));
+    const G = await loadJSON('data/gallery.json').catch(() => null);
+    const used = new Set(), rounds = [];
+    for (let i = 0; i < 40 && rounds.length < 5; i++) {
+      const sp = makeSpec('photo', need, 'all', P, G);
+      if (sp.t !== 'photo' || used.has(sp.c)) continue;
+      used.add(sp.c); rounds.push(sp);
+    }
+    Object.assign(gra, { rounds, i: 0, total: 0, guess: null, answered: false, results: [] });
+    if (!rounds.length) { v.innerHTML = '<div class="empty">Nie udało się wczytać zdjęć. Sprawdź połączenie.</div>'; gra.rounds = []; return; }
+    renderGraRound();
+  }
+  function renderGraRound() {
+    const v = $('#v-gra'), sp = gra.rounds[gra.i];
+    gra.guess = null; gra.answered = false;
+    v.innerHTML = `<div class="gra-head"><a class="back" href="#nauka" id="graQuit">✕</a><b>Runda ${gra.i + 1} / ${gra.rounds.length}</b><span>⭐ ${gra.total.toLocaleString('pl-PL')} pkt</span></div>
+      <div class="gra-wrap">
+        <div class="gra-photo">${sp.lab ? `<div class="fc-cat">📸 ${esc(sp.lab)}</div>` : ''}<button class="qphoto" data-lb="0"><img src="${esc(sp.img)}" alt=""></button><p class="muted small">Stuknij zdjęcie, aby powiększyć.</p></div>
+        <div class="gra-mapcol"><div id="graMap"><div class="loading">Ładowanie mapy…</div></div>
+          <button class="btn primary big" id="graGo" disabled>📍 Postaw pinezkę na mapie</button><div id="graRes"></div></div>
+      </div>`;
+    bindLightbox(v.querySelector('.gra-photo'), [{ src: sp.img, cap: '' }]);
+    $('#graQuit').onclick = e => { e.preventDefault(); if (confirm('Przerwać grę?')) { gra.rounds = []; location.hash = 'nauka'; } };
+    GMMap.load().then(world => {
+      gra.world = world;
+      let marker = null;
+      gra.api = GMMap.render($('#graMap'), world, {
+        onPoint: ll => {
+          if (gra.answered) return;
+          gra.guess = ll; if (marker) marker.remove(); marker = gra.api.setMarker(ll, 'guess');
+          const b = $('#graGo'); b.disabled = false; b.textContent = '✅ Zgadnij';
+        },
+      });
+      $('#graGo').onclick = () => gra.answered ? nextGraRound() : answerGra();
+    }).catch(() => { $('#graMap').innerHTML = '<div class="empty">Nie udało się wczytać mapy.</div>'; });
+  }
+  function answerGra() {
+    if (!gra.guess || gra.answered) return;
+    gra.answered = true; logActivity();
+    const sp = gra.rounds[gra.i], c = byId[sp.c];
+    const km = GMMap.distanceKm(gra.world, sp.c, gra.guess), pts = graScore(km);
+    gra.total += pts; gra.results.push({ c, pts, km });
+    const center = GMMap.centerOf(gra.world, sp.c);
+    gra.api.highlight(sp.c, 'hl-good');
+    if (km > 0 && center) { gra.api.line(gra.guess, center); gra.api.setMarker(center, 'answer'); gra.api.zoomTo([gra.guess, center]); }
+    else if (center) gra.api.zoomTo([center]);
+    if (km > 0 && !mistakes.some(m => specKey(m) === specKey(sp))) { mistakes = [sp, ...mistakes].slice(0, 200); store.set('mistakes', mistakes); }
+    $('.gra-head span').textContent = `⭐ ${gra.total.toLocaleString('pl-PL')} pkt`;
+    $('#graRes').innerHTML = `<div class="gra-result ${km > 0 ? 'bad' : 'good'}">
+        <div class="gra-pts">${pts.toLocaleString('pl-PL')} <small>pkt</small></div>
+        <div>${km > 0 ? `❌ To był(a) <b>${flag(c.id, 'sm')} ${esc(c.name)}</b> — pinezka ${Math.round(km).toLocaleString('pl-PL')} km od granicy` : `✅ Trafiony kraj: <b>${flag(c.id, 'sm')} ${esc(c.name)}</b>`}</div>
+      </div>
+      ${sp.cap ? `<div class="qex-cap">${txt(sp.cap)}${mapLink(sp.map)}</div>` : ''}
+      <p class="muted small"><a href="#kraj/${c.id}">Otwórz kartę kraju →</a></p>`;
+    const b = $('#graGo'); b.textContent = gra.i + 1 < gra.rounds.length ? 'Następna runda ➜' : 'Zobacz wynik 🏁';
+  }
+  function nextGraRound() {
+    gra.i++;
+    if (gra.i < gra.rounds.length) return renderGraRound();
+    const best = store.get('graBest', null), record = best == null || gra.total > best;
+    if (record) store.set('graBest', gra.total);
+    $('#v-gra').innerHTML = `<div class="card result"><div class="score">${gra.total.toLocaleString('pl-PL')}</div><div>na 25 000 pkt ${record ? '· 🏆 Nowy rekord!' : `· rekord ${best.toLocaleString('pl-PL')}`}</div>
+      <div class="gra-sum">${gra.results.map((r, i) => `<a href="#kraj/${r.c.id}">${i + 1}. ${flag(r.c.id, 'sm')} ${esc(r.c.name)} <b>${r.pts.toLocaleString('pl-PL')}</b>${r.km > 0 ? ` <small>(${Math.round(r.km)} km)</small>` : ' ✅'}</a>`).join('')}</div>
+      <p class="muted small">Pomylone zdjęcia trafiły do „Moje błędy”.</p>
+      <p class="result-actions"><button class="btn primary" id="graAgain">Zagraj jeszcze raz</button><a class="btn" href="#nauka">🎓 Nauka</a></p></div>`;
+    gra.rounds = [];
+    $('#graAgain').onclick = startGra;
   }
 
   // ═════════ MOJE (prywatne, za logowaniem) ═════════

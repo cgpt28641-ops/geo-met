@@ -393,6 +393,69 @@ select:focus { outline: 2px solid var(--accent); }
 .mr-h small { margin-left: auto; }
 .mr p { margin: 8px 0 4px; }
 
+
+/* ───────── Mapa ───────── */
+:root { --m0: #c9d3e3; --m1: #f5c451; --m2: #7fd3a6; --m3: #0fa968; --m-off: #e7ebf2; --sea: #dbe8f7; --land-x: #eef1f6; }
+:root[data-theme="dark"] { --m0: #3a4a6b; --m1: #9a7a22; --m2: #2f8f63; --m3: #22c47f; --m-off: #1c2740; --sea: #0d1830; --land-x: #18223a; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --m0: #3a4a6b; --m1: #9a7a22; --m2: #2f8f63; --m3: #22c47f; --m-off: #1c2740; --sea: #0d1830; --land-x: #18223a; } }
+.wmap { position: relative; background: var(--sea); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; touch-action: none; user-select: none; }
+.wmap svg { display: block; width: 100%; height: auto; cursor: crosshair; }
+.wm-sea { fill: var(--sea); }
+.wm-grat { fill: none; stroke: rgba(120,140,170,.18); stroke-width: .5; vector-effect: non-scaling-stroke; }
+.wm-c { fill: var(--land-x); stroke: rgba(80,95,120,.45); stroke-width: .5; vector-effect: non-scaling-stroke; transition: fill .2s; }
+.wm-c.has { fill: var(--m0); cursor: pointer; }
+.wm-c.has:hover { filter: brightness(1.1) saturate(1.2); stroke: var(--text); stroke-width: 1.2; }
+.wm-dot { stroke: var(--text); stroke-width: .8; }
+.wm-c.hl-good { fill: var(--good) !important; stroke: #fff; stroke-width: 1.5; }
+.wm-mark { stroke: #fff; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.wm-mark.guess { fill: var(--bad); }
+.wm-mark.answer { fill: var(--good); }
+.wm-line { fill: none; stroke: var(--text); stroke-width: 2; stroke-dasharray: 6 5; vector-effect: non-scaling-stroke; }
+.wm-ctrl { position: absolute; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.wm-ctrl button { width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 1.1rem; font-weight: 700; cursor: pointer; box-shadow: var(--shadow); }
+.map-legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 8px 2px 4px; font-size: .8rem; color: var(--muted); }
+.map-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.lg0 { background: var(--m0); } .lg1 { background: var(--m1); } .lg2 { background: var(--m2); } .lg3 { background: var(--m3); }
+.progress-row .segs { margin: 0; }
+
+/* gra */
+.gra-head { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; font-size: 1.05rem; }
+.gra-head .back { margin: 0; font-size: 1.2rem; }
+.gra-head span { margin-left: auto; font-weight: 700; }
+.gra-wrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 14px; align-items: start; }
+.gra-photo { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; text-align: center; position: sticky; top: 74px; }
+.gra-photo .qphoto img { max-height: 60vh; margin: auto; }
+.gra-mapcol { display: flex; flex-direction: column; gap: 10px; }
+.gra-result { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); border-left: 5px solid var(--good); }
+.gra-result.bad { border-left-color: var(--bad); }
+.gra-pts { font-size: 1.8rem; font-weight: 800; white-space: nowrap; }
+.gra-pts small { font-size: .8rem; color: var(--muted); }
+.gra-sum { display: grid; gap: 6px; margin: 16px auto; max-width: 420px; text-align: left; }
+.gra-sum a { display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: var(--surface-2); border-radius: 10px; text-decoration: none; color: var(--text); }
+.gra-sum b { margin-left: auto; }
+.action.game { background: linear-gradient(135deg, #0b3d2e, #1d4f91); color: #fff; border: 0; }
+.action.game small { color: rgba(255,255,255,.8); }
+
+/* porównanie dwóch krajów */
+.vs-pick { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 640px; }
+.vs-pick select { flex: 1; }
+.vs-x { font-weight: 800; color: var(--muted); }
+.vs-x.big { font-size: 1.6rem; }
+@media (min-width: 761px) { #compareRegions:has(.chip[data-pair]) { flex-wrap: wrap; overflow: visible; align-items: center; } }
+#compareRegions:has(.chip[data-pair]) { align-items: center; }
+.vs-wrap { grid-column: 1 / -1; display: grid; gap: 12px; }
+.vs-head { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: center; }
+.vs-head a { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); text-decoration: none; color: var(--text); text-align: center; }
+.vs-head small { color: var(--muted); }
+.vs-tips { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.vs-row { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+.vs-row h3 { margin: 0 0 8px; font-size: 1rem; }
+.vs-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.vs-cols ul { margin: 4px 0 0; padding-left: 18px; font-size: .92rem; }
+.vs-cols li { margin: 3px 0; }
+.vs-who { font-weight: 700; font-size: .85rem; display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.deep { margin: 4px 0 18px; }
+
 /* ───────── Mobile ───────── */
 @media (max-width: 860px) {
   .sections { columns: 1; }
@@ -454,6 +517,16 @@ select:focus { outline: 2px solid var(--accent); }
   .fc-actions #fcFlip { grid-column: 1 / -1; order: -1; }
   kbd { display: none; }
   .answers { grid-template-columns: 1fr; }
+  .gra-wrap { grid-template-columns: 1fr; gap: 10px; }
+  .gra-photo { position: static; padding: 8px; }
+  .gra-photo .qphoto img { max-height: 27vh; }
+  .gra-photo p { display: none; }
+  .gra-head { margin-bottom: 6px; }
+  .vs-cols, .vs-tips { grid-template-columns: 1fr; gap: 10px; }
+  .vs-head { gap: 6px; }
+  .vs-head a { padding: 10px 6px; }
+  .vs-head small { font-size: .7rem; }
+  .progress-row { flex-wrap: wrap; }
   .stats4 { grid-template-columns: 1fr 1fr; gap: 8px; }
   .stat { padding: 10px; }
   .stat b { font-size: 1.15rem; }

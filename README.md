@@ -4,6 +4,10 @@ Strona do nauki mety GeoGuessr po polsku, wygodna na telefonie i komputerze.
 
 ## Co jest w środku
 - **GeoMeta Asystent** (`asystent/`) — aplikacja na Windows: nauka po każdej rundzie GeoGuessra (F10) i opcjonalne podpowiedzi w treningu (zablokowane w trybach rankingowych).
+- **🎮 Gra jak w GeoGuessr** — zdjęcie prawdziwej wskazówki → kliknij na mapie świata → punkty (do 5000 za rundę, 5 rund, rekord).
+- **🗺️ Mapa świata** w zakładce Kraje — kolory pokazują postęp nauki, kliknięcie otwiera kraj.
+- **🆚 Dwa kraje obok siebie** (np. Czechy–Słowacja) z listą najczęściej mylonych par i quizem tylko z tej pary.
+- **🔎 Wyszukiwanie w 5000+ opisach zdjęć** (Plonk It: rozpoznanie, regiony, szczegóły).
 - **Nauka** — panel startowy: seria dni 🔥, dzienny cel, powtórki na dziś, „Moje błędy” oraz **ścieżka nauki** — lekcje z grupami krajów, które łatwo pomylić (przegląd kart → fiszki → test, 80% = zaliczone).
 - **Kraje** — 127 krajów i terytoriów (100 głównych) — ponad 2100 wskazówek: kamera Google, tablice, słupki, linie, znaki, język, słupy, przyroda, architektura. Każdy kraj ma zakładki: **Rozpoznanie**, **Regiony**, **Szczegóły** (karty ze zdjęciami z Plonk It, po polsku), **Ściąga** i **Galeria** (zdjęcia z GeoHints). Wyszukiwarka, filtry, oznaczanie krajów jako opanowane.
 - **Porównaj** — jedna kategoria obok siebie dla wszystkich krajów, jako opisy albo zdjęcia (16 galerii GeoHints: słupki, tablice, słupy, samochody Google i eskorty, szewrony, STOP, przejścia, drogowskazy…).
