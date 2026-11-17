@@ -506,15 +506,15 @@ window.COUNTRIES = [
   "summary": "Bermudy poznasz po pastelowych kamiennych domach z idealnie białymi dachami, ruchu lewostronnym z pojedynczą żółtą linią środkową i jasnoniebieskim oceanie.",
   "clues": {
    "kamera": [
-    "Czarny samochód/pickup z widocznymi przednimi bokami; bywa całkowicie rozmyty w poszarpany kształt",
+    "Czarny samochód Google (pikap), zwykle w całości widać boki jego przedniej części; bywa całkowicie rozmyty – wtedy widać poszarpaną plamę",
     "Trochę pokrycia z łodzi w jednym ze wschodnich portów"
    ],
    "tablice": [
-    "Całe białe, dość długie tablice z czarnymi cyframi skupionymi na środku"
+    "Całkowicie białe, dość podłużne tablice rejestracyjne z czarnymi cyframi skupionymi pośrodku"
    ],
    "linie": [
-    "Zwykle jedna ciągła żółta linia środkowa bez linii zewnętrznych",
-    "Czasem białe linie zygzakowate"
+    "Zwykle jedna ciągła żółta linia środkowa i brak linii krawędziowych",
+    "Czasem białe zygzakowate linie na jezdni"
    ],
    "przyroda": [
     "Gęsta roślinność z niewielkich drzew i krzewów, wiele palm",
@@ -526,7 +526,7 @@ window.COUNTRIES = [
    ]
   },
   "tips": [
-   "Bermudy to brytyjskie terytorium zamorskie – w country streak liczą się jako Wielka Brytania.",
+   "Bermudy to brytyjskie terytorium zamorskie – w seriach krajów (country streaks) liczą się jako Wielka Brytania.",
    "Białe dachy zlewające się z niebem przy pastelowych ścianach to niemal pewne Bermudy."
   ]
  },
@@ -818,12 +818,12 @@ window.COUNTRIES = [
   "summary": "Wyspy Kokosowe rozpoznasz po płaskich koralowych atolach z jaskrawobiałym piaskiem, licznymi palmami i koszonymi trawnikami.",
   "clues": {
    "przyroda": [
-    "Dwa koralowe atole z jaskrawobiałym piaskiem, mnóstwem palm i koszoną trawą",
-    "Dużo mniej lasów i wzgórz niż na Wyspie Bożego Narodzenia"
+    "Dwa atole koralowe; w krajobrazie jaskrawobiały piasek, mnóstwo palm i koszona trawa",
+    "Znacznie mniej lasów i wzgórz niż na Wyspie Bożego Narodzenia"
    ]
   },
   "tips": [
-   "Wyspy Kokosowe (Keeling) to terytorium Australii – w country streak liczą się jako Australia.",
+   "Wyspy Kokosowe (Keeling) to terytorium Australii – w seriach krajów (country streaks) liczą się jako Australia.",
    "Płaski atol z białym piaskiem zamiast zalesionych wzgórz odróżnia je od Wyspy Bożego Narodzenia."
   ]
  },
@@ -1386,8 +1386,8 @@ window.COUNTRIES = [
     "Takie pasy ma też jedno z aut w Mongolii (rozróżnisz po krajobrazie); w Gwatemali i na Curaçao pręty są, ale bez czarnych pasów"
    ],
    "tablice": [
-    "Tablice przypominają te z New Jersey: jasnożółte u góry, białe na dole",
-    "Przednie tablice nie są obowiązkowe – w Ameryce Łacińskiej poza tym tylko w Portoryko i Panamie"
+    "Tablice rejestracyjne przypominają te z New Jersey: u góry bladożółte, u dołu białe",
+    "Przednia tablica nie jest obowiązkowa – w Ameryce Łacińskiej poza tym tylko w Portoryko i Panamie"
    ],
    "znaki": [
     "Znak stop z napisem „PARE” mimo położenia w Ameryce Środkowej (jak w Ameryce Płd. i Portoryko)",
@@ -1398,11 +1398,11 @@ window.COUNTRIES = [
     "Język hiszpański"
    ],
    "slupy": [
-    "Głównie kwadratowe słupy betonowe z odwróconym „L” na szczycie; rzadziej okrągłe lub ośmiokątne",
+    "Głównie kwadratowe betonowe słupy energetyczne, zakończone u góry odwróconym „L”; rzadziej okrągłe lub ośmiokątne",
     "W obu Amerykach kwadratowe słupy mają tylko ten kraj, Portoryko i Urugwaj"
    ],
    "inne": [
-    "Drogi często z gładkiego asfaltu, wyraźnie ciemniejszego niż w innych krajach"
+    "Drogi często pokryte gładkim asfaltem, wyraźnie ciemniejszym niż w innych krajach"
    ]
   },
   "tips": [
@@ -1419,43 +1419,43 @@ window.COUNTRIES = [
   "phone": "+593",
   "diff": 2,
   "minor": false,
-  "summary": "Ekwador poznasz po niskiej jakości kamerze „shitcam” z brązowawym odcieniem, mieszance krótkich i długich białych tablic oraz licznych słupkach z czerwonymi paskami.",
+  "summary": "Ekwador poznasz po niskiej jakości kamerze „shitcam” z brązowawym odcieniem, mieszance krótkich i długich białych tablic rejestracyjnych oraz licznych słupkach z czerwonymi paskami.",
   "clues": {
    "kamera": [
-    "Generacja 3 nagrana białym autem z krótką, grubą anteną („stubby”), nie zawsze widoczną; taka antena bywa też w Meksyku, Brazylii i Kolumbii",
-    "Ta sama antena na czarnym aucie występuje tylko w Kolumbii – pomaga przy trudnych wyborach 50/50",
-    "Generacja 4 nagrana białym pickupem z czarną paką i bez anteny (w Panamie i Kostaryce pickup ma antenę z przodu)",
-    "Niskiej jakości kamera „shitcam”: szerokie okrągłe rozmycie auta, brązowawe kolory, czasem czerwone logo z przodu – w Ameryce Łacińskiej tylko tutaj",
+    "Całe pokrycie Gen 3 nagrano białym autem z krótką, grubą anteną (antena lub auto nie zawsze widoczne); taka antena bywa też w Meksyku, Brazylii i Kolumbii",
+    "Taka antena na czarnym aucie to wyłącznie Kolumbia – pomaga w trudnych wyborach między tymi krajami (Kolumbia ma też białe auto)",
+    "Całe pokrycie Gen 4 nagrano białym pickupem z czarną paką, bez anteny (w Panamie i Kostaryce pickup ma antenę z przodu)",
+    "Dziwna kamera niskiej jakości („shitcam”): szerokie, okrągłe rozmycie auta, często brązowawe kolory, czasem czerwone logo z przodu – w Ameryce Łacińskiej tylko tutaj",
     "Na wyspach Galapagos kilka tras trekkera, czasem z żółwiami słoniowymi"
    ],
    "tablice": [
-    "Białe tablice standardowe, krótkie lub długie – często widać mieszankę obu rozmiarów, czego nie ma nigdzie indziej w Ameryce Łacińskiej",
-    "Pojazdy użytkowe (taksówki, autobusy) mają starsze całe pomarańczowe tablice lub nowsze z pomarańczowym paskiem u góry"
+    "Standardowe tablice rejestracyjne białe, krótkie lub długie – często widać oba rozmiary naraz, czego nie ma nigdzie indziej w Ameryce Łacińskiej",
+    "Pojazdy komercyjne (taksówki, autobusy) mają starsze, całkowicie pomarańczowe tablice albo nowsze, z pomarańczowym paskiem u góry"
    ],
    "slupki": [
-    "Słupki bardzo częste, co w Ameryce Łacińskiej jest rzadkością",
+    "Słupki drogowe bardzo częste, co w Ameryce Łacińskiej jest rzadkością",
     "Dwa główne typy: okrągły z dwoma czerwonymi paskami oraz płaski z dwoma czerwonymi odblaskami na czarnym tle",
-    "Inne odmiany zwykle trzymają tę samą kolorystykę; podobny prostokątny słupek bywa w Malezji"
+    "Inne odmiany prawie zawsze mają tę samą kolorystykę i styl; podobny prostokątny słupek bywa w Malezji"
    ],
    "znaki": [
-    "„Spam” szewronów na zakrętach – znacznie więcej niż w innych krajach regionu (czasem też w Kolumbii)",
+    "Na zakrętach często cały szereg szewronów – zwykle znacznie więcej niż w większości krajów regionu (czasem też w Kolumbii)",
     "Liczne kwadratowe znaki z białym tłem",
-    "Zielone kilometrowce z charakterystyczną tarczą numeru drogi",
-    "Tyły znaków czasem pomalowane na morski błękit (teal) – w Ameryce Łacińskiej unikat; słupki cienkie, metalowe",
-    "Znaki ulic jedno- i dwukierunkowych z tekstem wewnątrz strzałki (podobne tylko w Dominikanie i Portoryko)"
+    "Zielone słupki kilometrowe z charakterystyczną tarczą numeru drogi",
+    "Tyły znaków czasem pomalowane na turkusowoniebiesko – w Ameryce Łacińskiej unikat; słupki znaków cienkie, metalowe",
+    "Znaki ulicy jednokierunkowej lub dwukierunkowej z napisem wewnątrz strzałki (w Ameryce Łac. podobne mają tylko Dominikana i Portoryko)"
    ],
    "jezyk": [
     "Język hiszpański"
    ],
    "slupy": [
-    "Większość słupów okrągła, betonowa i dość nijaka",
+    "Większość słupów okrągła, betonowa – dość nijaka i mało pomocna",
     "Słupy „drabinkowe” z mnóstwem małych wcięć jak szczeble – w Ameryce Łacińskiej praktycznie unikat; brazylijskie słupy „waflowe” mają tylko kilka wcięć"
    ],
    "inne": [
     "Drogi betonowe dość częste",
-    "Bardzo często podwójne barierki, rzadkie w innych krajach Ameryki Płd",
+    "Bardzo często podwójne bariery, znacznie rzadsze w innych krajach Ameryki Płd",
     "Większość domów z szarej cegły z blaszanymi dachami (w Peru i zwłaszcza Boliwii częściej czerwona cegła)",
-    "W miastach czasem chodniki z sześciokątnych płytek"
+    "W miastach czasem nawierzchnia z sześciokątnych płytek"
    ]
   },
   "tips": [
@@ -1536,14 +1536,14 @@ window.COUNTRIES = [
   "phone": "+20",
   "diff": 3,
   "minor": false,
-  "summary": "Egipt ma tylko kilka tras trekkera Generacji 3 przy zabytkach Kairu i Aleksandrii – najprościej zapamiętać, jak one wyglądają.",
+  "summary": "Egipt ma tylko kilka tras trekkera (Gen 3) przy zabytkach Kairu i Aleksandrii – najprościej zapamiętać, jak one wyglądają.",
   "clues": {
    "kamera": [
-    "Całe pokrycie to Generacja 3 z trekkera: kamera niżej nad ziemią, mniejsze rozmycie, brak cienia auta",
+    "Całe pokrycie to Gen 3 nagrane trekkerem: kamera niżej nad ziemią, mniejsze rozmycia, brak cienia samochodu",
     "Siedem odcinków, każdy przy zabytku – od piramid, przez koptyjskie kościoły, po średniowieczne cytadele"
    ],
    "jezyk": [
-    "Język arabski, czasem widoczny na tablicach; pismo rozpoznasz po kreskach i kropkach"
+    "Język arabski, czasem widoczny na znakach; pismo rozpoznasz po kreskach i kropkach"
    ],
    "inne": [
     "Cztery trekkery w Kairze i trzy w okolicach Aleksandrii, w tym dwa daleko na południowy zachód od miasta (klasztor św. Menasa i wykopaliska)",
@@ -1591,7 +1591,7 @@ window.COUNTRIES = [
     "Szewrony: białe strzałki na czarnym tle albo białe na niebieskim; pojedyncza strzałka rzadka. Niebieskie poza tym tylko we Francji; w Portugalii żółte strzałki na czarnym",
     "Charakterystyczne słupki kilometrowe z kolorową obwódką (zieloną, czerwoną lub żółtą) i numerem drogi u góry; litery przed numerem wskazują region",
     "Drogowskazy z białym tłem i kolorowymi prostokątami z numerami dróg; drogowskazy na autostradach mają niebieskie tło",
-    "Na wsi tablice łowieckie: białe z tekstem zaczynającym się od „coto” i kończącym na „caza” albo z tłem podzielonym ukośnie na część czarną i białą; kod na nich wskazuje region (np. „Ex” – Estremadura)",
+    "Na wsi tablice łowieckie: białe z napisem od „coto” do „caza” albo z tłem podzielonym ukośnie na część czarną i białą; kod na nich wskazuje region (np. „Ex” – Estremadura)",
     "Przed bramami i garażami znaki zakazu parkowania z napisem „Vado permanente” i nazwą gminy po „Ayuntamiento de” (we Włoszech „Passo carrabile”)"
    ],
    "jezyk": [
@@ -1696,15 +1696,15 @@ window.COUNTRIES = [
   "phone": "+500",
   "diff": 3,
   "minor": true,
-  "summary": "Falklandy mają tylko kilka tras trekkera Generacji 3 poza drogami na trzech zachodnich wyspach – wystarczy zapamiętać ich wygląd.",
+  "summary": "Falklandy mają tylko kilka tras trekkera (Gen 3) poza drogami na trzech zachodnich wyspach – wystarczy zapamiętać ich wygląd.",
   "clues": {
    "kamera": [
-    "Wyłącznie kilka tras trekkera Generacji 3, w całości poza drogami",
+    "Wyłącznie kilka tras trekkera (Gen 3), w całości poza drogami",
     "Trekkery tylko na trzech zachodnich wyspach i wokół nich: Carcass Island, West Point Island i New Island"
    ]
   },
   "tips": [
-   "To brytyjskie terytorium zamorskie na wschód od argentyńskiej Ziemi Ognistej – w country streak liczy się jako Wielka Brytania.",
+   "To brytyjskie terytorium zamorskie na wschód od argentyńskiej Ziemi Ognistej – w seriach krajów (country streak) liczy się jako Wielka Brytania.",
    "Przy tak skąpym pokryciu nie ucz się wskazówek, tylko zapamiętaj wygląd trekkerów."
   ]
  },
@@ -1938,27 +1938,27 @@ window.COUNTRIES = [
   "summary": "Gibraltar poznasz po charakterystycznej długiej antenie ze srebrnym czubkiem, wszechobecnej wapiennej Skale i angielskich napisach w śródziemnomorskim otoczeniu.",
   "clues": {
    "kamera": [
-    "Całe pokrycie to Generacja 3; auto zawsze z unikalną długą anteną ze srebrnym czubkiem",
+    "Całe pokrycie to Gen 3; samochód Google ma zawsze unikalną długą antenę ze srebrnym czubkiem",
     "Taka antena występuje też w części Hiszpanii (niegraniczącej z tym terytorium), poza tym nigdzie w Europie",
     "Wszystkie zdjęcia z grudnia – w mieście często widać ozdoby świąteczne"
    ],
    "tablice": [
-    "Białe tablice z przodu i żółte z tyłu, jak w Wielkiej Brytanii"
+    "Tablice rejestracyjne białe z przodu i żółte z tyłu, jak w Wielkiej Brytanii"
    ],
    "jezyk": [
     "Główny język to angielski – angielskie napisy na oficjalnych tablicach w śródziemnomorskiej scenerii (podobnie na Malcie)"
    ],
    "przyroda": [
     "Wszystko zdominowane przez ogromną wapienną górę o charakterystycznym kształcie z odsłoniętymi białymi skałami",
-    "Dzikie małpy – magoty, jedyne w Europie"
+    "Dzikie małpy (makaki magoty) – jedyne miejsce w Europie, gdzie małpy żyją na wolności"
    ],
    "inne": [
-    "Ruch prawostronny, mimo brytyjskich tablic",
+    "Ruch prawostronny, mimo tablic rejestracyjnych w brytyjskim stylu",
     "Gęsta zabudowa śródziemnomorska: pastelowe budynki z żaluzjowymi okiennicami, zwykle zielonymi, niebieskimi lub brązowymi"
    ]
   },
   "tips": [
-   "To brytyjskie terytorium zamorskie na południowym krańcu Półwyspu Iberyjskiego – w country streak liczy się jako Wielka Brytania.",
+   "To brytyjskie terytorium zamorskie na południowym krańcu Półwyspu Iberyjskiego – w seriach krajów (country streak) liczy się jako Wielka Brytania.",
    "Żółta tylna tablica przy ruchu prawostronnym i Skała Gibraltarska w tle to pewny Gibraltar."
   ]
  },
@@ -2486,24 +2486,24 @@ window.COUNTRIES = [
     "Pokrycie wyłącznie Gen 2: niższa jakość, okrągłe rozmycie u góry i u dołu, lekko przekłamane kolory"
    ],
    "tablice": [
-    "Białe tablice z przodu i żółte z tyłu, jak w Wielkiej Brytanii, ale z małym pionowym czerwonym paskiem po lewej"
+    "Tablice rejestracyjne białe z przodu i żółte z tyłu, jak w Wielkiej Brytanii, ale z małym pionowym czerwonym paskiem po lewej"
    ],
    "slupki": [
     "Niebieskie słupki często spotykane w terenie zabudowanym"
    ],
    "znaki": [
-    "Przy głównych drogach czasem krawężniki w pasy"
+    "Przy głównych drogach czasem krawężniki malowane w pasy"
    ],
    "przyroda": [
     "Pagórkowate pola uprawne z wąskimi drogami",
-    "Bardzo częste kolcolisty (janowce) z jaskrawożółtymi kwiatami – rosną też w surowych częściach Wysp Brytyjskich, np. w Szkocji"
+    "Bardzo częste kolcolisty (janowce) z jaskrawożółtymi kwiatami – rosną też na innych dzikich terenach Wielkiej Brytanii i Irlandii, np. w szkockich Highlands"
    ],
    "inne": [
     "Bielone domy z murkami przy wejściu, podobnie jak w Irlandii"
    ]
   },
   "tips": [
-   "Wyspa Man jest zależnością Korony – w seriach liczy się jako Wielka Brytania",
+   "Wyspa Man jest dependencją Korony brytyjskiej – w seriach liczy się jako Wielka Brytania",
    "Gen 2 z brytyjskimi żółtymi tablicami i czerwonym paskiem to niemal pewna Wyspa Man"
   ]
  },
@@ -2571,7 +2571,7 @@ window.COUNTRIES = [
    ]
   },
   "tips": [
-   "Na poważnych mapach może się trafić jedynie patio muzeum w Bagdadzie",
+   "Na poważnych mapach może się (rzadko) trafić jedynie patio muzeum w Bagdadzie",
    "Prześwietlony obraz trekkera Gen 1.5 wśród starożytnych eksponatów to Irak"
   ]
  },
@@ -2694,39 +2694,39 @@ window.COUNTRIES = [
   "phone": "+44",
   "diff": 3,
   "minor": true,
-  "summary": "Jersey rozpoznasz po pokryciu Gen 2 z brytyjską infrastrukturą, francuskich nazwach ulic, tablicach z czerwonym herbem bez niebieskiego paska i żółtych liniach ustąp pierwszeństwa.",
+  "summary": "Jersey rozpoznasz po pokryciu Gen 2 z brytyjską infrastrukturą, francuskich nazwach ulic, tablicach rejestracyjnych z czerwonym herbem i bez niebieskiego paska UE i żółtych liniach ustąp pierwszeństwa.",
   "clues": {
    "kamera": [
     "Wszystkie zdjęcia wykonano kamerą Gen 2"
    ],
    "tablice": [
-    "Długie białe tablice z przodu i żółte z tyłu, jak w Wielkiej Brytanii, z czerwonym herbem po lewej i literą „J” na początku numeru",
-    "Brak niebieskiego paska UE"
+    "Jak w Wielkiej Brytanii: długie białe tablice rejestracyjne z przodu i żółte z tyłu; po lewej czerwony herb, numer zaczyna się literą „J”",
+    "Brak niebieskiego paska UE (wyspa nigdy nie należała do UE)"
    ],
    "linie": [
-    "Żółte linie ustąp pierwszeństwa na skrzyżowaniach (w Wielkiej Brytanii zwykle podwójne białe kropkowane)"
+    "Na skrzyżowaniach żółte linie „ustąp pierwszeństwa” (w Wielkiej Brytanii zwykle podwójna biała linia przerywana)"
    ],
    "znaki": [
     "Ruch lewostronny, drogowskazy, szewrony i znaki ostrzegawcze w stylu brytyjskim",
-    "Znaki początku i końca „Green Lane” oraz niebieskie oznaczenia tras rowerowych z mapką wyspy",
-    "Część znaków przymocowana do słupka asymetrycznie, częściej niż w Wielkiej Brytanii"
+    "Rozbudowana sieć tras rowerowych: znaki początku i końca „Green Lane” oraz niebieskie oznaczenia tras z mapką wyspy pośrodku",
+    "Niektóre znaki przymocowane do słupka niesymetrycznie (z boku) – częściej niż w Wielkiej Brytanii, choć to mniejszość znaków"
    ],
    "jezyk": [
     "Większość nazw ulic i miejscowości zawiera francuskie słowa",
     "Na niektórych znakach lokalny język jèrriais, bliski francuskiemu"
    ],
    "przyroda": [
-    "Kręte drogi z żywopłotami, często w tunelach drzew, jak na angielskiej wsi, ale zwykle w słonecznej pogodzie",
+    "Kręte drogi z żywopłotami, często pod sklepieniem z koron drzew, jak na angielskiej wsi, ale zwykle w słonecznej pogodzie",
     "Ozdobne kordyliny (palmy kornwalijskie) o cienkich pniach i łukowatych liściach – rosną też na części brytyjskiego wybrzeża"
    ],
    "inne": [
     "Architektura jak w północnej Francji: pastelowe ściany i ciemne łupkowe dachy; obok brytyjskie domy szeregowe",
     "Mury i domy z czerwonego granitu",
-    "Żółte budki telefoniczne zamiast czerwonych"
+    "Budki telefoniczne żółte (w Wielkiej Brytanii czerwone)"
    ]
   },
   "tips": [
-   "Jersey jest zależnością Korony – w seriach liczy się jako Wielka Brytania",
+   "Jersey to dependencja Korony brytyjskiej – w seriach krajów (country streaks) liczy się jako Wielka Brytania",
    "Brytyjska infrastruktura z francuskimi nazwami ulic wskazuje Jersey",
    "Żółte budki telefoniczne i żółte linie ustąp pierwszeństwa odróżniają Jersey od Wielkiej Brytanii"
   ]
@@ -3192,24 +3192,24 @@ window.COUNTRIES = [
   "phone": "+423",
   "diff": 3,
   "minor": true,
-  "summary": "Liechtenstein rozpoznasz po niskiej kamerze (low-cam), czarnych tablicach z żółto-czerwonym herbem i płaskiej dolinie Renu otoczonej wysokimi górami.",
+  "summary": "Liechtenstein rozpoznasz po nisko zamontowanej kamerze (Low Cam), czarnych tablicach z żółto-czerwonym herbem i płaskiej dolinie Renu otoczonej wysokimi górami.",
   "clues": {
    "kamera": [
-    "Całe pokrycie to low-cam: duże rozmycie auta, szersze drogi i niższa perspektywa – zawsze low-cam mają też tylko Szwajcaria i Japonia"
+    "Całe pokrycie to Low Cam (kamera zamontowana niżej): duże rozmycie samochodu, drogi wyglądają szerzej, niższa perspektywa – zawsze Low Cam mają też tylko Szwajcaria i Japonia"
    ],
    "tablice": [
-    "Czarne tablice z białymi znakami i żółto-czerwonym herbem po lewej; po rozmyciu szare z widocznymi kolorami herbu"
+    "Czarne tablice rejestracyjne z białymi znakami i żółto-czerwonym herbem po lewej; po rozmyciu szare z widocznymi kolorami herbu"
    ],
    "slupki": [
-    "Czarno-białe walcowe słupki z zaokrągloną górą, białym lub szarym odblaskiem i często niebieską nakładką z boku – niemal identyczne w Szwajcarii",
-    "Na barierkach stosuje się słupki klinowe"
+    "Czarno-białe walcowe słupki z zaokrągloną górą, białym lub szarym odblaskiem i często z niebieskim elementem z boku – niemal identyczne w Szwajcarii",
+    "Na barierach energochłonnych mocuje się słupki klinowe"
    ],
    "znaki": [
     "Drogowskazy białe (mniejsze drogi) lub niebieskie (większe) zakończone ostrym grotem w kontrastowym kolorze, jak w Szwajcarii",
     "Znak przejścia dla pieszych z siedmioma pasami na nietypowo wysokim prostokącie – identyczny w Szwajcarii",
     "Zielono-białe znaki przystanków z napisem LIEMOBIL u góry i zwykle czarną metalową ramką",
     "Znaki często mają okrągłą szarą metalową obwódkę – podobne w Szwajcarii i Niemczech",
-    "Żółto-czarne separatory z zaokrągloną górą i „klockiem” na szczycie, po 3 pasy każdego koloru, żółty na dole"
+    "Żółto-czarne pasiaste separatory drogowe z zaokrągloną górą i wypustką jak w klocku Lego na szczycie; po 3 pasy każdego koloru, żółty na dole"
    ],
    "przyroda": [
     "Większość pokrycia w płaskiej dolinie rzecznej z wysokimi górami prawie w każdą stronę, szczególnie na wschodzie",
@@ -3221,7 +3221,7 @@ window.COUNTRIES = [
    ]
   },
   "tips": [
-   "Low-cam w Alpach to Szwajcaria albo Liechtenstein – rozstrzygają czarne tablice z herbem i napis LIEMOBIL",
+   "Low Cam w Alpach to Szwajcaria albo Liechtenstein – rozstrzygają czarne tablice z herbem i napis LIEMOBIL",
    "Dolina Renu z górami na wschodzie jest typowym widokiem"
   ]
  },
@@ -3387,31 +3387,31 @@ window.COUNTRIES = [
   "phone": "+352",
   "diff": 2,
   "minor": false,
-  "summary": "Luksemburg rozpoznasz po długich żółtych tablicach, żółtych drogowskazach w ramkach z nazwami wielkimi literami oraz czarnych szewronach z żółtymi strzałkami wśród zielonych pagórków.",
+  "summary": "Luksemburg rozpoznasz po długich żółtych tablicach rejestracyjnych, żółtych drogowskazach w ramach z nazwami pisanymi wielkimi literami oraz szewronach z żółtymi strzałkami na czarnym tle wśród zielonych pagórków.",
   "clues": {
    "kamera": [
-    "Pokrycie niemal wyłącznie 2. i 4. generacji; 3. generacja rzadka"
+    "Pokrycie niemal wyłącznie Gen 2 i Gen 4; Gen 3 rzadkie, ale się zdarza"
    ],
    "tablice": [
-    "Długie żółte tablice z przodu i z tyłu, z niebieskim paskiem po lewej",
-    "Dużo zagranicznych aut z białymi tablicami",
-    "Żółte tablice prywatne mają też Holandia (przód i tył), Wielka Brytania (tył) i część starych aut francuskich (tył)"
+    "Długie żółte tablice rejestracyjne z przodu i z tyłu, z niebieskim paskiem UE po lewej",
+    "Sporo zagranicznych aut z białymi tablicami (to mały kraj)",
+    "Żółte tablice aut prywatnych mają w Europie poza tym tylko Holandia (przód i tył), Wielka Brytania (tył) i część aut francuskich sprzed 2009 r. (tył)"
    ],
    "slupki": [
-    "Czarno-białe słupki klinowe z szarym odblaskiem z przodu, dwoma okrągłymi z tyłu; część z wcięciem w dolnej połowie",
-    "Prawie identyczne jak niemieckie, ale odblask mocowany trzema śrubami (w Niemczech dwiema)"
+    "Czarno-białe słupki drogowe w kształcie klina: z przodu szary prostokątny odblask, z tyłu dwa okrągłe; część ma charakterystyczne wcięcie w dolnej połowie",
+    "Prawie identyczne jak niemieckie, ale odblask jest przykręcony trzema śrubami (w Niemczech dwiema)"
    ],
    "znaki": [
-    "Czarne szewrony z żółtymi strzałkami, rzadko niebiesko-żółte – żaden sąsiad takich nie stosuje",
-    "Żółte drogowskazy z cienkim czarnym obrysem, ostrym zakończeniem, nazwami wielkimi literami i pełną ramką",
-    "Numery dróg regionalnych (1–2 cyfry) w czerwonym polu, lokalnych (3 cyfry) w żółtym",
-    "Żółte tablice wjazdowe w ramkach, często dwujęzyczne, z numerem drogi i ograniczeniem prędkości u góry",
-    "Ramki z kwadratowymi narożnikami na wielu elementach infrastruktury – w Danii narożniki są zaokrąglone",
+    "Szewrony: żółte strzałki na czarnym tle, rzadko niebiesko-żółte – żaden sąsiad takich nie stosuje",
+    "Żółte drogowskazy z cienką czarną obwódką i ostrym zakończeniem, nazwy wielkimi literami; całość otoczona ramą",
+    "Na drogowskazach numery dróg regionalnych (1–2 cyfry) w czerwonym prostokącie, lokalnych (3 cyfry) w żółtym",
+    "Żółte tablice wjazdowe miejscowości w ramie, zwykle z nazwą w dwóch językach; u góry często numer drogi i znak ograniczenia prędkości",
+    "Takie ramy (z prostymi narożnikami) także na wielu innych elementach infrastruktury – duńskie mają narożniki bardziej zaokrąglone",
     "Prawie wszystkie znaki na białych słupkach (rzadziej spotykane też we Francji)",
-    "Krótkie tabliczki z nazwami ulic, zwykle na białym tle, często ze ściętymi niebieskimi narożnikami",
-    "Na niektórych słupkach masywny okrągły odblask z niebiesko-białymi oznaczeniami (podobne w Szwecji i Finlandii)",
-    "Znak przejścia z 5 pionowymi pasami (belgijski ma 2 poziome)",
-    "Niebieski znak przystanku zawsze w tym samym wzorze, autobus z sześcioma oknami"
+    "Tabliczki z nazwami ulic prawie zawsze krótkie, zwykle z białym tłem; częsty wzór z niebieskimi, skośnie ściętymi narożnikami",
+    "Na niektórych słupkach znaków masywny okrągły odblask z niebiesko-białymi oznaczeniami (podobne w Szwecji i Finlandii)",
+    "Znak przejścia dla pieszych z 5 pionowymi pasami zebry (belgijski ma 2 poziome)",
+    "Znak przystanku autobusowego niebieski, zawsze w tym samym wzorze; narysowany autobus ma sześć okien"
    ],
    "jezyk": [
     "Trzy języki urzędowe: lokalny (germański), francuski i niemiecki; na znakach i reklamach dominuje francuski",
@@ -3419,7 +3419,7 @@ window.COUNTRIES = [
     "Nazwy miejscowości głównie pochodzenia lokalnego (germańskiego) lub niemieckiego"
    ],
    "slupy": [
-    "Najczęściej słupy ze szczytem jak odwrócony trójząb – częste też we Francji, Hiszpanii i Portugalii"
+    "Najczęściej słupy z wierzchołkiem w kształcie odwróconego trójzębu – częste też we Francji, Hiszpanii i Portugalii"
    ],
    "przyroda": [
     "Zielone, łagodnie pofalowane wzgórza z mozaiką pól i lasów; płaski teren rzadki (inaczej niż w Holandii)"
@@ -3430,8 +3430,8 @@ window.COUNTRIES = [
    ]
   },
   "tips": [
-   "Żółta tablica na pagórkowatym terenie to raczej Luksemburg niż płaska Holandia",
-   "Czarno-żółte szewrony wyróżniają Luksemburg na tle wszystkich sąsiadów",
+   "Żółta tablica rejestracyjna na pagórkowatym terenie to raczej Luksemburg niż płaska Holandia",
+   "Szewrony z żółtymi strzałkami na czarnym tle wyróżniają Luksemburg na tle wszystkich sąsiadów",
    "Słupek jak niemiecki, ale z trzema śrubami odblasku i francuskimi napisami wskazuje Luksemburg"
   ]
  },
@@ -3444,25 +3444,25 @@ window.COUNTRIES = [
   "phone": "+371",
   "diff": 1,
   "minor": false,
-  "summary": "Łotwę rozpoznasz po cienkich lekko zakrzywionych słupkach z dwoma okrągłymi odblaskami z tyłu, znaku przejścia z pięcioma pasami i literach z kreską nad samogłoskami (Ā, Ē, Ī).",
+  "summary": "Łotwę rozpoznasz po cienkich lekko zakrzywionych słupkach z dwoma okrągłymi odblaskami z tyłu, znaku przejścia dla pieszych z pięcioma pasami i literach z kreską nad samogłoskami (Ā, Ē, Ī).",
   "clues": {
    "kamera": [
-    "Bywa czerwone lub czarne auto 4. generacji (spotykane też m.in. na Litwie, ale nie w Estonii)"
+    "Bywa czerwony lub czarny samochód Google Gen 4 (spotykany też m.in. na Litwie, ale nie w Estonii)"
    ],
    "tablice": [
-    "Długie białe tablice z niebieskim paskiem UE po lewej"
+    "Podłużne białe tablice rejestracyjne (format europejski) z niebieskim paskiem UE po lewej"
    ],
    "slupki": [
-    "Cienkie, lekko zakrzywione słupki z prostokątnym odblaskiem z przodu i dwoma okrągłymi z tyłu",
-    "Odblaski białe lub pomarańczowe, czarny pas lekko skośny, często numery pod przednim odblaskiem"
+    "Cienkie, lekko wygięte słupki drogowe: z przodu prostokątny odblask, z tyłu dwa okrągłe",
+    "Odblaski białe lub pomarańczowe; czarny pas lekko ukośny; pod przednim odblaskiem często numery"
    ],
    "znaki": [
-    "Białe szewrony z czerwonymi strzałkami jak na Litwie i w Polsce (Estonia, Rosja i Ukraina mają odwrotne kolory)",
-    "Niebieski znacznik kilometrowy ustawiony równolegle do drogi, z numerem tylko z jednej strony",
-    "Znaki ostrzegawcze i ograniczenia prędkości z grubą czerwoną obwódką i cienkim białym obrzeżem",
-    "Znak przejścia z 5 pasami (w Estonii i na Litwie 3), pieszy ma wyraźnie długie nogi",
-    "Znak przystanku z autobusem o 5 oknach (w pozostałych krajach bałtyckich 4)",
-    "Niebieskie drogowskazy z białym tekstem; strzałka bardziej stylizowana, ze skośnym tyłem grotu"
+    "Szewrony: czerwone strzałki na białym tle, jak na Litwie i w Polsce (Estonia, Rosja i Ukraina mają odwrotnie: białe strzałki na czerwonym)",
+    "Niebieski słupek kilometrowy ustawiony równolegle do drogi, z liczbą tylko z jednej strony",
+    "Znaki ostrzegawcze i ograniczenia prędkości z grubą czerwoną obwódką otoczoną cienkim białym marginesem",
+    "Znak przejścia dla pieszych z 5 pasami (w Estonii i na Litwie 3); pieszy ma wyraźnie długie nogi",
+    "Znak przystanku autobusowego: autobus z 5 oknami (w pozostałych krajach bałtyckich 4)",
+    "Niebieskie drogowskazy z białym tekstem; strzałka bardziej stylizowana, z ukośnym tyłem grotu (w Estonii i na Litwie pionowym)"
    ],
    "jezyk": [
     "Język bałtycki, blisko spokrewniony z litewskim",
@@ -3470,17 +3470,17 @@ window.COUNTRIES = [
     "Słowo „iela” (ulica) jest unikatowe; rzadko w Rydze pojawia się też „gatve” (gat.)"
    ],
    "slupy": [
-    "Charakterystyczne szczyty słupów z hakowatymi izolatorami ułożonymi naprzemiennie lewo-prawo-lewo (rzadkie w Estonii i na Litwie)"
+    "Charakterystyczne zwieńczenia słupów: hakowate izolatory ułożone naprzemiennie lewo-prawo-lewo lub odwrotnie (w Estonii i na Litwie znacznie rzadsze)"
    ],
    "inne": [
-    "Barierki typu A z białymi lub czerwonymi odblaskami (Estonia bez, Litwa pomarańczowe)",
+    "Bariery energochłonne typu A z białymi lub czerwonymi odblaskami (Estonia bez, Litwa pomarańczowe)",
     "Numery domów często w kształcie wysokich prostokątów w różnych kolorach",
     "Zabudowa z drewna i białej cegły, dachy z blachy falistej dość strome; także nowsze domy z pastelowymi ścianami"
    ]
   },
   "tips": [
    "Pięć pasów na znaku przejścia i pięć okien w autobusie na znaku przystanku to cechy unikatowe w krajach bałtyckich",
-   "Znacznik kilometrowy równoległy do drogi oznacza Łotwę (na Litwie jest pod kątem 45°)",
+   "Słupek kilometrowy ustawiony równolegle do drogi oznacza Łotwę (w Estonii jest prostopadły, na Litwie ustawiony inaczej)",
    "Gruba czerwona obwódka znaków ostrzegawczych odróżnia Łotwę od Litwy i Estonii"
   ]
  },
@@ -3530,17 +3530,17 @@ window.COUNTRIES = [
   "summary": "Czarnogórę rozpoznasz po czerwonym kółku z herbem na tablicach, białych słupkach z czarnym szczytem i czerwonym odblaskiem oraz górach z jasną, odsłoniętą skałą na wybrzeżu.",
   "clues": {
    "kamera": [
-    "Całe pokrycie 4. generacji to smallcam: niżej zamontowana kamera, duże okrągłe rozmycie z małym występem z przodu, czasem całkiem przezroczyste (typowe dla Bałkanów i południa Europy)",
-    "W 3. generacji czasem widać „rozdarcia” obrazu (rifty) przy złym zszyciu, zwłaszcza patrząc w niebo – częste też w Albanii"
+    "Całe Gen 4 to Small Cam: kamera niżej, duże okrągłe rozmycie samochodu z małym występem z przodu, czasem przezroczyste (Small Cam ma większość Bałkanów i południa Europy)",
+    "W Gen 3 czasem widać „rozdarcia” obrazu (ang. rifts) wynikające ze złego zszycia, zwłaszcza patrząc w niebo – częste też w Albanii"
    ],
    "tablice": [
-    "Standardowe europejskie tablice z niebieskim paskiem i herbem na czerwonym kółku widocznym przez rozmycie – albańskie nie mają czerwonego kółka"
+    "Standardowe europejskie tablice rejestracyjne z niebieskim paskiem i herbem na czerwonym kółku, widocznym mimo rozmycia – biała część albańskich tablic nie ma czerwonego kółka"
    ],
    "slupki": [
-    "Najczęściej biały słupek z czarnym szczytem, czerwonym odblaskiem z przodu i białym z tyłu – takie same w Słowenii"
+    "Najczęściej biały słupek z czarnym wierzchem, czerwonym odblaskiem z przodu i białym z tyłu – takie same w Słowenii"
    ],
    "znaki": [
-    "Szewrony czarne na białym lub czerwone na żółtym (w Albanii białe na czarnym)",
+    "Szewrony: czarne strzałki na białym tle lub czerwone strzałki na żółtym tle (w Albanii białe strzałki na czarnym tle)",
     "Drogowskazy często żółte z czarnym napisem",
     "Wiele brązowych znaków z białymi napisami"
    ],
@@ -3556,14 +3556,14 @@ window.COUNTRIES = [
     "Większość dróg ma tylko 1–2 pasy"
    ],
    "inne": [
-    "Barierki często zardzewiałe",
-    "Jedyny kraj bałkański, gdzie często występują barierki zarówno typu A, jak i B"
+    "Bariery energochłonne często zardzewiałe",
+    "Jedyny kraj bałkański, gdzie często występują bariery zarówno typu A, jak i B"
    ]
   },
   "tips": [
    "Czerwone kółko na tablicy odróżnia Czarnogórę od Albanii",
-   "Mieszanka barierek typu A i B jest typowa tylko dla Czarnogóry na Bałkanach",
-   "Szewrony czarne na białym (a nie białe na czarnym) wykluczają Albanię"
+   "Częste bariery zarówno typu A, jak i B są na Bałkanach typowe tylko dla Czarnogóry",
+   "Szewrony z czarnymi strzałkami na białym tle (a nie białymi na czarnym) wykluczają Albanię"
   ]
  },
  {
@@ -3778,11 +3778,11 @@ window.COUNTRIES = [
   "summary": "Mariany Północne rozpoznasz po amerykańskich znakach na tropikalnej wyspie, niebieskich tabliczkach ulic, drewnianych słupach i kwitnących na czerwono drzewach płomiennych.",
   "clues": {
    "kamera": [
-    "Całe auto rozmyte (grube rozmycie pod kamerą), ale z przodu po prawej widać antenę – bliżej kamery niż w aucie z Guamu"
+    "Cały samochód Google rozmyty (grube rozmycie pod kamerą), ale z przodu po prawej widać antenę – bliżej kamery niż w samochodzie z Guamu"
    ],
    "znaki": [
     "Niebieskie tabliczki z nazwami ulic (na Guamie zielone)",
-    "Znaki w stylu USA: stop po angielsku, tarcze z numerami dróg, amerykańskie ograniczenia prędkości, metalowe słupki z małymi otworami",
+    "Znaki w stylu USA: stop po angielsku, tarcze z numerami dróg, amerykańskie ograniczenia prędkości, metalowe słupki znaków z małymi otworami",
     "Bardzo dużo odblasków na jezdni (podobnie na Guamie)"
    ],
    "jezyk": [
@@ -3797,12 +3797,12 @@ window.COUNTRIES = [
    ],
    "inne": [
     "Ruch prawostronny, rzadki na wyspach",
-    "Terytorium zależne USA – w streakach liczone jako USA"
+    "Terytorium zależne USA – w seriach krajów (country streaks) liczone jako USA"
    ]
   },
   "tips": [
    "Drewniane słupy, niebieskie tabliczki ulic i drzewa płomienne odróżniają Mariany Północne od Guamu",
-   "Antena auta Google jest tu bliżej kamery niż na Guamie"
+   "Antena samochodu Google jest tu bliżej kamery niż na Guamie"
   ]
  },
  {
@@ -3937,14 +3937,14 @@ window.COUNTRIES = [
   "phone": "+60",
   "diff": 2,
   "minor": false,
-  "summary": "Malezję rozpoznasz po czarnych tablicach z dwoma białymi blokami, podwójnych białych liniach środkowych, żółtych sześciokątnych tarczach dróg i znaku stop BERHENTI.",
+  "summary": "Malezję rozpoznasz po czarnych tablicach rejestracyjnych z dwoma białymi blokami znaków, podwójnych białych liniach środkowych, żółtych sześciokątnych tarczach dróg i znaku stop BERHENTI.",
   "clues": {
    "tablice": [
-    "Czarne tablice zwykle z dwoma białymi blokami znaków, widocznymi nawet po rozmyciu – w Indonezji bloki są trzy",
+    "Czarne tablice rejestracyjne, zwykle z dwoma białymi blokami znaków widocznymi nawet po rozmyciu (indonezyjskie czarne tablice mają trzy bloki)",
     "Rzadziej tablice z jednym zwartym blokiem znaków"
    ],
    "slupki": [
-    "Słupki w kolorach czarnym, białym, szarym i czerwonym, w kilku wariantach o podobnym układzie"
+    "Słupki drogowe często w kolorach czarnym, białym, szarym i czerwonym; kilka wariantów o podobnym układzie"
    ],
    "linie": [
     "Na drogach dwupasmowych częste podwójne białe ciągłe linie środkowe – jedyny taki kraj w Azji Płd.-Wsch",
@@ -3953,8 +3953,8 @@ window.COUNTRIES = [
    ],
    "znaki": [
     "Unikatowe znaki BERHENTI (stop) i BERI LALUAN (ustąp pierwszeństwa)",
-    "Unikatowe żółte nieregularne sześciokątne tarcze z numerami dróg na zielonych lub niebieskich drogowskazach",
-    "Biało-niebieskie znaczniki kilometrowe, często z sześciokątną tarczą",
+    "Żółte tarcze z numerami dróg w kształcie nieregularnego sześciokąta (tylko tutaj), na zielonych lub niebieskich drogowskazach",
+    "Biało-niebieskie słupki kilometrowe, często z widoczną sześciokątną tarczą numeru drogi",
     "Słowo AWAS (uwaga) na znakach ostrzegawczych",
     "Słupki znaków prawie zawsze w czarno-białe pasy (w Azji też na Sri Lance, w Bhutanie, Indiach, Nepalu i Bangladeszu)"
    ],
@@ -3968,12 +3968,12 @@ window.COUNTRIES = [
     "Czasem pod czarną naklejką czerwono-białe lub czerwono-niebieskie pasy"
    ],
    "inne": [
-    "Czarno-białe barierki",
+    "Czarno-białe bariery drogowe",
     "Wiele domów z pionowymi kolumnami w konstrukcji"
    ]
   },
   "tips": [
-   "Czarna tablica z dwoma białymi blokami to Malezja, z trzema – Indonezja",
+   "Czarna tablica rejestracyjna z dwoma białymi blokami to Malezja, z trzema – Indonezja",
    "Chińskie znaki i BERHENTI odróżniają Malezję od Indonezji",
    "Podwójna biała linia środkowa jest unikatowa w Azji Płd.-Wsch."
   ]
@@ -4347,7 +4347,7 @@ window.COUNTRIES = [
   "summary": "Panamę zdradza zamazany biały pickup z unikalną anteną, krótkie białe tablice z turkusowym paskiem u góry i płoty z żywych drzewek wzdłuż dróg.",
   "clues": {
    "kamera": [
-    "Duży biały pickup, zwykle całkowicie zamazany; czasem widać unikalną antenę (w Kostaryce pickup zwykle nie jest zamazany, a auto z Ekwadoru nie ma anteny ani białej metalowej barierki)"
+    "Duży biały pickup, zwykle całkowicie zamazany; czasem widać unikalną antenę (w Kostaryce pickup zwykle nie jest zamazany, a samochód z Ekwadoru nie ma anteny ani białej metalowej barierki)"
    ],
    "tablice": [
     "Krótkie tablice, najczęściej białe z poziomym turkusowym paskiem u góry, rzadko pasek w innym kolorze",
@@ -5069,21 +5069,21 @@ window.COUNTRIES = [
     "Czasem spotyka się tablice w brytyjskim stylu: białe z przodu i żółte z tyłu; bardzo rzadko czerwone"
    ],
    "linie": [
-    "Na głównych drogach często podwójna żółta linia przy krawędzi jezdni",
+    "Na głównych drogach często podwójna żółta linia krawędziowa",
     "Ostrzeżenia malowane dużymi literami na asfalcie, np. słynne „HUMP AHEAD”",
-    "Przy przystankach bywa żółte pole wyjazdu autobusu ze strzałką namalowane na jezdni"
+    "Przy przystankach bywa namalowane na jezdni żółte pole ze strzałką, oznaczające miejsce wyjazdu autobusu"
    ],
    "znaki": [
-    "Znaki ostrzegawcze i inne umieszczone na białym kwadratowym tle – rozwiązanie niemal unikalne na świecie",
-    "Tabliczki z nazwami ulic jasnozielone, z zaokrąglonymi rogami i charakterystyczną, rozstrzeloną białą czcionką",
-    "Drogowskazy zielone z białym napisem po angielsku",
+    "Znaki drogowe (np. trójkątne ostrzegawcze) zawsze umieszczone na białym kwadratowym tle – rozwiązanie niemal unikalne na świecie",
+    "Tablice z nazwami ulic jasnozielone, z zaokrąglonymi rogami i charakterystyczną, pogrubioną, rozstrzeloną białą czcionką",
+    "Drogowskazy z zielonym tłem i białym napisem po angielsku",
     "Drogi ekspresowe mają trzyliterowe skróty (np. TPE, SLE, CTE), dobrze widoczne na drogowskazach i łatwe do znalezienia na mapie"
    ],
    "jezyk": [
     "Napisy na znakach i drogowskazach po angielsku"
    ],
    "przyroda": [
-    "Wzdłuż głównych ulic często sadzone rozłożyste drzewa deszczowe (rain tree)"
+    "Wszędzie rosną drzewa deszczowe (ang. rain tree), często sadzone wzdłuż głównych ulic"
    ],
    "inne": [
     "Ogólny wygląd miasta-państwa: bardzo czysto, schludnie, wysokie bloki mieszkalne w tle",
@@ -5096,7 +5096,7 @@ window.COUNTRIES = [
   },
   "tips": [
    "Często sam ogólny wygląd – porządek, bloki, biało-czarne krawężniki – wystarcza, by rozpoznać Singapur.",
-   "Kwadratowe białe tło pod znakami drogowymi praktycznie występuje tylko w Singapurze.",
+   "Białe kwadratowe tło pod znakami drogowymi występuje praktycznie tylko w Singapurze.",
    "Czarne tablice mają też Malezja i Indonezja, ale tam znaki są dzielone na grupy – w Singapurze nie."
   ]
  },
@@ -5350,11 +5350,11 @@ window.COUNTRIES = [
   "phone": "+239",
   "diff": 3,
   "minor": true,
-  "summary": "Wyspy Świętego Tomasza i Książęca zdradza ciemna, zamglona kamera niskiej jakości z ogromnym rozmyciem samochodu, portugalski język i gęsty tropikalny las deszczowy.",
+  "summary": "Wyspy Świętego Tomasza i Książęca zdradza ciemna, zamglona kamera niskiej jakości z ogromnym rozmyciem samochodu, język portugalski i gęsty tropikalny las deszczowy.",
   "clues": {
    "kamera": [
-    "Całe pokrycie nagrane słabej jakości kamerą („shitcam”); obraz ciemniejszy i bardziej zamglony niż w starszej wersji z Indii i Nigerii",
-    "Samochód często całkowicie rozmyty: bardzo duże rozmycie z tyłu i nieco mniejsze z przodu",
+    "Całe pokrycie nagrane słabej jakości kamerą („shitcam”); obraz ciemniejszy i bardziej zamglony niż w pierwotnej wersji, spotykanej głównie w Indiach i Nigerii",
+    "Samochód często całkowicie rozmyty: bardzo duża plama rozmycia z tyłu i nieco mniejsza z przodu",
     "W wielu miejscach z boku auta wystaje ukośna antena"
    ],
    "znaki": [
@@ -5377,7 +5377,7 @@ window.COUNTRIES = [
   },
   "tips": [
    "Ciemny, zamglony „shitcam” w połączeniu z portugalskim i dżunglą to niemal pewnie Wyspy Świętego Tomasza i Książęca.",
-   "Szukaj niebieskich podstaw drewnianych słupów z napisem CST."
+   "Szukaj drewnianych słupów pomalowanych u dołu na niebiesko, z napisem CST."
   ]
  },
  {
@@ -5814,7 +5814,7 @@ window.COUNTRIES = [
     "Na Hawajach: tarcze dróg w kształcie kostki do gitary z numerem na dole; znaki drogowe często na żółtych słupkach"
    ],
    "jezyk": [
-    "Angielski w pisowni amerykańskiej (np. center, color) – w anglojęzycznej Kanadzie pisownia brytyjska",
+    "Angielski z pisownią „center”, „color” (a nie „centre”, „colour”) – w anglojęzycznej Kanadzie obowiązuje pisownia brytyjska",
     "System imperialny: mile na znakach prędkości i odległości, wysokość mostów w stopach i calach",
     "Na Hawajach: nazwy miejsc po hawajsku – tylko osiem spółgłosek (H, K, L, M, N, P, W i ʻokina), każde słowo kończy się samogłoską",
     "Na Hawajach: samogłoski z makronem (Ā, Ē, Ī, Ō, Ū) i liczne dyftongi, np. AI, AE, UI"
@@ -5921,13 +5921,13 @@ window.COUNTRIES = [
   "clues": {
    "kamera": [
     "W pokryciu samochodowym wyraźnie widać duży czerwony lub biały samochód Google",
-    "Po spojrzeniu w dół widać masywnego pickupa z widocznymi prętami i skrzynią z tyłu"
+    "Po spojrzeniu w dół widać masywnego pickupa z widocznymi poprzeczkami stelaża i skrzynią ładunkową z tyłu"
    ],
    "tablice": [
-    "Krótkie tablice, zazwyczaj w jasnoniebieskim lub ciemnoniebieskim wzorze"
+    "Krótkie tablice rejestracyjne, zwykle z jasnoniebieskim lub ciemnoniebieskim wzorem"
    ],
    "jezyk": [
-    "Część ulic i miejscowości ma duńskie nazwy (np. „gade”), czasem dwujęzyczne tabliczki – głównie w historycznych centrach"
+    "Część ulic i miejscowości ma duńskie nazwy (np. „gade”), bywają też dwujęzyczne tablice – głównie w historycznych centrach miast"
    ],
    "inne": [
     "Ruch lewostronny, choć to terytorium zależne USA (na kontynencie ruch prawostronny)",
@@ -5936,7 +5936,7 @@ window.COUNTRIES = [
    ]
   },
   "tips": [
-   "W seriach krajów Wyspy Dziewicze Stanów Zjednoczonych liczą się jako USA.",
+   "W trybie serii krajów (country streak) Wyspy Dziewicze Stanów Zjednoczonych liczą się jako USA.",
    "Ruch lewostronny przy amerykańskim otoczeniu i duńskie nazwy ulic to najszybsze wskazówki."
   ]
  },
