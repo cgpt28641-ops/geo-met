@@ -474,7 +474,9 @@ table.rank { width: 100%; border-collapse: collapse; font-size: .92rem; }
 .result h3 { margin-top: 22px; }
 /* prawdziwe ulice */
 .gra-wrap.street { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
-.gra-street { padding: 0; overflow: hidden; }
+.gra-street { padding: 0; overflow: hidden; text-align: left; }
+#mly canvas.mapillary-canvas { left: 0; top: 0; }
+.mly-tag { position: absolute; left: 10px; top: 10px; z-index: 5; background: rgba(0,0,0,.65); color: #fff; font-size: .78rem; padding: 4px 10px; border-radius: 99px; pointer-events: none; }
 #mly { width: 100%; height: min(70vh, 640px); position: relative; }
 
 /* ───────── Mobile ───────── */

@@ -900,8 +900,10 @@
   function loadMapillary() {
     if (mlyLib) return mlyLib;
     mlyLib = new Promise((res, rej) => {
-      const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'js/vendor/mapillary.css'; document.head.appendChild(css);
-      const sc = document.createElement('script'); sc.src = 'js/vendor/mapillary.js'; sc.onload = () => res(window.mapillary); sc.onerror = rej; document.head.appendChild(sc);
+      const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'js/vendor/mapillary.css';
+      const cssReady = new Promise(r => { css.onload = r; css.onerror = r; }); document.head.appendChild(css);
+      const sc = document.createElement('script'); sc.src = 'js/vendor/mapillary.js';
+      sc.onload = () => cssReady.then(() => res(window.mapillary)); sc.onerror = rej; document.head.appendChild(sc);
     });
     return mlyLib;
   }
@@ -992,10 +994,16 @@
       const real = world.features.find(ft => ft.properties.c && d3.geoContains(ft, ll));
       return { t: 'ulice', id: String(f.props.image_id), ll, c: real ? real.properties.c : c.id, pano: !!f.props.is_pano };
     };
-    for (let batch = 0; batch < 6; batch++) {
-      const got = (await Promise.all([tryOne(), tryOne(), tryOne(), tryOne()])).filter(Boolean);
-      if (got.length) return got.find(g => g.pano) || got[0];
+    // najpierw szukamy panoram 360°, zwykłe zdjęcia tylko gdy w okolicy nie ma żadnej panoramy
+    let fallback = null;
+    for (let batch = 0; batch < 8; batch++) {
+      const got = (await Promise.all([tryOne(), tryOne(), tryOne(), tryOne(), tryOne(), tryOne()])).filter(Boolean);
+      const pano = got.find(g => g.pano);
+      if (pano) return pano;
+      fallback = fallback || got[0];
+      if (fallback && batch >= 3) return fallback;
     }
+    if (fallback) return fallback;
     throw new Error('Nie udało się znaleźć zdjęć ulicznych — spróbuj jeszcze raz.');
   }
 
@@ -1078,7 +1086,7 @@
     if (gra.viewer) { try { gra.viewer.remove(); } catch { /* */ } gra.viewer = null; }
     v.innerHTML = `<div class="gra-head"><a class="back" href="#nauka" id="graQuit">✕</a><b>${gra.mode === 'dzien' ? '📅 Wyzwanie dnia · ' : ''}Runda ${gra.i + 1} / ${graCount()}</b><span>⭐ ${fmt(gra.total)} pkt</span></div>
       <div class="gra-wrap ${street ? 'street' : ''}">
-        ${street ? '<div class="gra-photo gra-street"><div id="mly"></div></div>'
+        ${street ? `<div class="gra-photo gra-street"><div id="mly"></div>${sp.pano ? '<span class="mly-tag">🌐 360° — przeciągnij, żeby się rozejrzeć</span>' : '<span class="mly-tag">📷 zwykłe zdjęcie — strzałkami idziesz dalej po drodze</span>'}</div>`
           : `<div class="gra-photo">${sp.lab ? `<div class="fc-cat">📸 ${esc(sp.lab)}</div>` : ''}<button class="qphoto" data-lb="0"><img src="${esc(sp.img)}" alt=""></button><p class="muted small">Stuknij zdjęcie, aby powiększyć.</p></div>`}
         <div class="gra-mapcol"><div id="graMap"><div class="loading">Ładowanie mapy…</div></div>
           <button class="btn primary big" id="graGo" disabled>📍 Postaw pinezkę na mapie</button><div id="graRes"></div></div>
@@ -1093,9 +1101,11 @@
       };
       loadMapillary().then(m => {
         gra.viewer = new m.Viewer({ accessToken: gra.token, container: 'mly', imageId: sp.id, component: { cover: false } });
+        const viewer = gra.viewer, fit = () => { try { viewer.resize(); } catch { /* */ } };
+        [50, 300, 1000].forEach(t => setTimeout(fit, t));
+        if (!window.__mlyResize) { window.__mlyResize = true; addEventListener('resize', () => { if (gra.viewer) try { gra.viewer.resize(); } catch { /* */ } }); }
         let ok = false;
         gra.viewer.on('image', ev => { ok = true; const img = ev.image; if (img && img.lngLat) sp.ll = [img.lngLat.lng, img.lngLat.lat]; });
-        if (gra.viewer.moveTo) gra.viewer.moveTo(sp.id).catch(fail);
         setTimeout(() => { if (!ok) fail(); }, 15000);
       }).catch(fail);
     }
