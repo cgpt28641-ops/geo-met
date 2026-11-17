@@ -917,23 +917,82 @@
     }
     return d3.geoCentroid(f);
   }
+  // ── minimalny dekoder kafelków wektorowych (MVT) — tylko to, czego potrzebujemy z mapy pokrycia Mapillary ──
+  function decodeMvt(buf) {
+    const u8 = new Uint8Array(buf); let pos = 0;
+    const varint = () => { let r = 0, m = 1, b; do { b = u8[pos++]; r += (b & 0x7f) * m; m *= 128; } while (b & 0x80); return r; };
+    const skip = w => { if (w === 0) varint(); else if (w === 1) pos += 8; else if (w === 2) { const l = varint(); pos += l; } else if (w === 5) pos += 4; };
+    const str = (s, e) => new TextDecoder().decode(u8.subarray(s, e));
+    const layers = {};
+    while (pos < u8.length) {
+      const tag = varint();
+      if (tag >> 3 !== 3 || (tag & 7) !== 2) { skip(tag & 7); continue; }
+      const end = varint() + pos, L = { name: '', keys: [], values: [], feats: [], extent: 4096 };
+      while (pos < end) {
+        const t = varint(), f = t >> 3, w = t & 7;
+        if (f === 1) { const l = varint(); L.name = str(pos, pos + l); pos += l; }
+        else if (f === 3) { const l = varint(); L.keys.push(str(pos, pos + l)); pos += l; }
+        else if (f === 5) L.extent = varint();
+        else if (f === 4) {
+          const vend = varint() + pos; let val = null;
+          while (pos < vend) {
+            const vt = varint(), vf = vt >> 3;
+            if (vf === 1) { const l = varint(); val = str(pos, pos + l); pos += l; }
+            else if (vf === 2) { val = new DataView(u8.buffer, u8.byteOffset + pos, 4).getFloat32(0, true); pos += 4; }
+            else if (vf === 3) { val = new DataView(u8.buffer, u8.byteOffset + pos, 8).getFloat64(0, true); pos += 8; }
+            else if (vf === 4 || vf === 5) val = varint();
+            else if (vf === 6) { const n = varint(); val = n % 2 ? -(n + 1) / 2 : n / 2; }
+            else if (vf === 7) val = !!varint();
+            else skip(vt & 7);
+          }
+          L.values.push(val);
+        } else if (f === 2) {
+          const fend = varint() + pos, F = { tags: [], geom: [] };
+          while (pos < fend) {
+            const ft = varint(), ff = ft >> 3;
+            if (ff === 2 || ff === 4) { const pend = varint() + pos; const arr = ff === 2 ? F.tags : F.geom; while (pos < pend) arr.push(varint()); }
+            else skip(ft & 7);
+          }
+          L.feats.push(F);
+        } else skip(w);
+      }
+      L.feature = i => {
+        const F = L.feats[i], props = {};
+        for (let k = 0; k < F.tags.length; k += 2) props[L.keys[F.tags[k]]] = L.values[F.tags[k + 1]];
+        // pierwszy punkt geometrii (MoveTo)
+        const zz = n => (n >> 1) ^ -(n & 1);
+        const first = F.geom.length >= 3 ? [zz(F.geom[1]), zz(F.geom[2])] : null;
+        return { props, first };
+      };
+      layers[L.name] = L;
+    }
+    return layers;
+  }
+  const tileOf = (lon, lat, z) => { const n = 2 ** z; return [Math.floor((lon + 180) / 360 * n), Math.floor((1 - Math.asinh(Math.tan(lat * Math.PI / 180)) / Math.PI) / 2 * n)]; };
+  const tileToLonLat = (z, x, y, px, py, ext) => { const n = 2 ** z, lon = (x + px / ext) / n * 360 - 180; const yy = Math.PI * (1 - 2 * (y + py / ext) / n); return [lon, Math.atan(Math.sinh(yy)) * 180 / Math.PI]; };
+  const withTimeout = (url, ms = 7000) => { const ac = new AbortController(); const t = setTimeout(() => ac.abort(), ms); return fetch(url, { signal: ac.signal }).finally(() => clearTimeout(t)); };
+
   async function findStreet(world, pool, token) {
     const tryOne = async () => {
       const c = pick(pool), p = randomPointIn(world, c.id);
       if (!p) return null;
-      const r = 0.05, bbox = [p[0] - r, p[1] - r, p[0] + r, p[1] + r].map(v => v.toFixed(5)).join(',');
-      const res = await fetch(`https://graph.mapillary.com/images?access_token=${encodeURIComponent(token)}&fields=id,geometry,is_pano&bbox=${bbox}&limit=25`);
+      const z = 10, [x, y] = tileOf(p[0], p[1], z);
+      let res;
+      try { res = await withTimeout(`https://tiles.mapillary.com/maps/vtp/mly1_public/2/${z}/${x}/${y}?access_token=${encodeURIComponent(token)}`); }
+      catch { return null; }
       if (res.status === 401 || res.status === 403) throw new Error('Zły klucz Mapillary.');
       if (!res.ok) return null;
-      const data = (await res.json()).data || [];
-      if (!data.length) return null;
-      const panos = data.filter(x => x.is_pano);
-      const img = pick(panos.length ? panos : data);
-      const ll = img.geometry.coordinates;
-      const real = world.features.find(f => f.properties.c && d3.geoContains(f, ll));
-      return { t: 'ulice', id: img.id, ll, c: real ? real.properties.c : c.id, pano: !!img.is_pano };
+      const seq = decodeMvt(await res.arrayBuffer()).sequence;
+      if (!seq || !seq.feats.length) return null;
+      const all = seq.feats.map((_, i) => seq.feature(i)).filter(f => f.props.image_id && f.first);
+      const best = all.filter(f => f.props.is_pano && !f.props.foot), car = all.filter(f => !f.props.foot);
+      const f = pick(best.length ? best : car.length ? car : all);
+      if (!f) return null;
+      const ll = tileToLonLat(z, x, y, f.first[0], f.first[1], seq.extent);
+      const real = world.features.find(ft => ft.properties.c && d3.geoContains(ft, ll));
+      return { t: 'ulice', id: String(f.props.image_id), ll, c: real ? real.properties.c : c.id, pano: !!f.props.is_pano };
     };
-    for (let batch = 0; batch < 8; batch++) {
+    for (let batch = 0; batch < 6; batch++) {
       const got = (await Promise.all([tryOne(), tryOne(), tryOne(), tryOne()])).filter(Boolean);
       if (got.length) return got.find(g => g.pano) || got[0];
     }
@@ -1025,9 +1084,21 @@
           <button class="btn primary big" id="graGo" disabled>📍 Postaw pinezkę na mapie</button><div id="graRes"></div></div>
       </div>`;
     if (!street) bindLightbox(v.querySelector('.gra-photo'), [{ src: sp.img, cap: '' }]);
-    else loadMapillary().then(m => {
-      gra.viewer = new m.Viewer({ accessToken: gra.token, container: 'mly', imageId: sp.id, component: { cover: false } });
-    }).catch(() => { $('#mly').innerHTML = '<div class="empty">Nie udało się wczytać przeglądarki zdjęć.</div>'; });
+    else {
+      const fail = () => {
+        const el = $('#mly'); if (!el || gra.rounds[gra.i] !== sp) return;
+        el.innerHTML = `<div class="empty">😕 Mapillary nie udostępnił tego zdjęcia.<br><small>Jeśli to się powtarza, klucz może jeszcze nie być w pełni aktywny po stronie Mapillary (zwykle trwa to do kilku godzin).</small><br><br><button class="btn primary" id="mlyNext">🔄 Inne miejsce</button> <button class="btn" id="mlyFoto">📸 Graj zdjęciami wskazówek</button></div>`;
+        $('#mlyNext').onclick = async () => { el.innerHTML = '<div class="loading">Szukam innego miejsca…</div>'; const loc = await findStreet(gra.world, gra.pool, gra.token).catch(() => null); if (loc) { gra.rounds[gra.i] = loc; renderGraRound(); } else fail(); };
+        $('#mlyFoto').onclick = () => { gra.rounds = []; gra.src = 'foto'; store.set('graSrc', 'foto'); startGra('foto'); };
+      };
+      loadMapillary().then(m => {
+        gra.viewer = new m.Viewer({ accessToken: gra.token, container: 'mly', imageId: sp.id, component: { cover: false } });
+        let ok = false;
+        gra.viewer.on('image', ev => { ok = true; const img = ev.image; if (img && img.lngLat) sp.ll = [img.lngLat.lng, img.lngLat.lat]; });
+        if (gra.viewer.moveTo) gra.viewer.moveTo(sp.id).catch(fail);
+        setTimeout(() => { if (!ok) fail(); }, 15000);
+      }).catch(fail);
+    }
     $('#graQuit').onclick = e => { e.preventDefault(); if (confirm('Przerwać grę?')) { gra.rounds = []; location.hash = 'nauka'; } };
     GMMap.load().then(world => {
       gra.world = world;
