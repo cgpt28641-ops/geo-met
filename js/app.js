@@ -882,130 +882,11 @@
     $('#lTest').onclick = () => { location.hash = 'quiz'; startQuiz({ pool: l.countries, n: 12, types: ['clue', 'clue', 'clue', 'photo', 'photo'], title: `Test: ${l.title}`, lesson: id }); };
   }
 
-  // ═════════ GRA: zgadywanie na mapie (punkty jak w GeoGuessr) ═════════
-  // tryby: 'foto' (zdjęcia wskazówek), 'ulice' (prawdziwe panoramy Mapillary), 'dzien' (wyzwanie dnia)
-  const gra = { rounds: [], i: 0, total: 0, guess: null, answered: false, mode: 'foto', src: store.get('graSrc', 'foto'), region: store.get('graRegion', 'all'), api: null, viewer: null };
-  const graScore = km => km <= 0.025 ? 5000 : Math.round(5000 * Math.exp(-km / 1492.7));
+  // ═════════ GRA: zdjęcie wskazówki → kliknij na mapie (punkty jak w GeoGuessr) ═════════
+  // tryby: 'foto' (zwykła gra), 'dzien' (wyzwanie dnia)
+  const gra = { rounds: [], i: 0, total: 0, guess: null, answered: false, mode: 'foto', region: store.get('graRegion', 'all'), api: null };
+  const graScore = km => km <= 0 ? 5000 : Math.round(5000 * Math.exp(-km / 1492.7));
   const fmt = n => n.toLocaleString('pl-PL');
-
-  // ── klucz Mapillary: lokalny (ustawienia) albo z Cloudflare (/api/config) ──
-  let mlyConfig = null;
-  async function mlyToken() {
-    const local = store.get('mlyToken', '');
-    if (local) return local;
-    if (!mlyConfig) mlyConfig = fetch('/api/config').then(r => r.ok ? r.json() : {}).catch(() => ({}));
-    return (await mlyConfig).mapillary || '';
-  }
-  let mlyLib = null;
-  function loadMapillary() {
-    if (mlyLib) return mlyLib;
-    mlyLib = new Promise((res, rej) => {
-      const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'js/vendor/mapillary.css';
-      const cssReady = new Promise(r => { css.onload = r; css.onerror = r; }); document.head.appendChild(css);
-      const sc = document.createElement('script'); sc.src = 'js/vendor/mapillary.js';
-      sc.onload = () => cssReady.then(() => res(window.mapillary)); sc.onerror = rej; document.head.appendChild(sc);
-    });
-    return mlyLib;
-  }
-  function randomPointIn(world, code) {
-    const feats = world.byCode[code] || [];
-    if (!feats.length) return world.punkty[code] || null;
-    const f = pick(feats.length > 1 ? feats.sort((a, b) => d3.geoArea(b) - d3.geoArea(a)).slice(0, 2) : feats);
-    const [[x0, y0], [x1, y1]] = d3.geoBounds(f);
-    for (let t = 0; t < 60; t++) {
-      const lon = x0 <= x1 ? x0 + Math.random() * (x1 - x0) : x0 + Math.random() * (x1 + 360 - x0);
-      const p = [lon > 180 ? lon - 360 : lon, y0 + Math.random() * (y1 - y0)];
-      if (d3.geoContains(f, p)) return p;
-    }
-    return d3.geoCentroid(f);
-  }
-  // ── minimalny dekoder kafelków wektorowych (MVT) — tylko to, czego potrzebujemy z mapy pokrycia Mapillary ──
-  function decodeMvt(buf) {
-    const u8 = new Uint8Array(buf); let pos = 0;
-    const varint = () => { let r = 0, m = 1, b; do { b = u8[pos++]; r += (b & 0x7f) * m; m *= 128; } while (b & 0x80); return r; };
-    const skip = w => { if (w === 0) varint(); else if (w === 1) pos += 8; else if (w === 2) { const l = varint(); pos += l; } else if (w === 5) pos += 4; };
-    const str = (s, e) => new TextDecoder().decode(u8.subarray(s, e));
-    const layers = {};
-    while (pos < u8.length) {
-      const tag = varint();
-      if (tag >> 3 !== 3 || (tag & 7) !== 2) { skip(tag & 7); continue; }
-      const end = varint() + pos, L = { name: '', keys: [], values: [], feats: [], extent: 4096 };
-      while (pos < end) {
-        const t = varint(), f = t >> 3, w = t & 7;
-        if (f === 1) { const l = varint(); L.name = str(pos, pos + l); pos += l; }
-        else if (f === 3) { const l = varint(); L.keys.push(str(pos, pos + l)); pos += l; }
-        else if (f === 5) L.extent = varint();
-        else if (f === 4) {
-          const vend = varint() + pos; let val = null;
-          while (pos < vend) {
-            const vt = varint(), vf = vt >> 3;
-            if (vf === 1) { const l = varint(); val = str(pos, pos + l); pos += l; }
-            else if (vf === 2) { val = new DataView(u8.buffer, u8.byteOffset + pos, 4).getFloat32(0, true); pos += 4; }
-            else if (vf === 3) { val = new DataView(u8.buffer, u8.byteOffset + pos, 8).getFloat64(0, true); pos += 8; }
-            else if (vf === 4 || vf === 5) val = varint();
-            else if (vf === 6) { const n = varint(); val = n % 2 ? -(n + 1) / 2 : n / 2; }
-            else if (vf === 7) val = !!varint();
-            else skip(vt & 7);
-          }
-          L.values.push(val);
-        } else if (f === 2) {
-          const fend = varint() + pos, F = { tags: [], geom: [] };
-          while (pos < fend) {
-            const ft = varint(), ff = ft >> 3;
-            if (ff === 2 || ff === 4) { const pend = varint() + pos; const arr = ff === 2 ? F.tags : F.geom; while (pos < pend) arr.push(varint()); }
-            else skip(ft & 7);
-          }
-          L.feats.push(F);
-        } else skip(w);
-      }
-      L.feature = i => {
-        const F = L.feats[i], props = {};
-        for (let k = 0; k < F.tags.length; k += 2) props[L.keys[F.tags[k]]] = L.values[F.tags[k + 1]];
-        // pierwszy punkt geometrii (MoveTo)
-        const zz = n => (n >> 1) ^ -(n & 1);
-        const first = F.geom.length >= 3 ? [zz(F.geom[1]), zz(F.geom[2])] : null;
-        return { props, first };
-      };
-      layers[L.name] = L;
-    }
-    return layers;
-  }
-  const tileOf = (lon, lat, z) => { const n = 2 ** z; return [Math.floor((lon + 180) / 360 * n), Math.floor((1 - Math.asinh(Math.tan(lat * Math.PI / 180)) / Math.PI) / 2 * n)]; };
-  const tileToLonLat = (z, x, y, px, py, ext) => { const n = 2 ** z, lon = (x + px / ext) / n * 360 - 180; const yy = Math.PI * (1 - 2 * (y + py / ext) / n); return [lon, Math.atan(Math.sinh(yy)) * 180 / Math.PI]; };
-  const withTimeout = (url, ms = 7000) => { const ac = new AbortController(); const t = setTimeout(() => ac.abort(), ms); return fetch(url, { signal: ac.signal }).finally(() => clearTimeout(t)); };
-
-  async function findStreet(world, pool, token) {
-    const tryOne = async () => {
-      const c = pick(pool), p = randomPointIn(world, c.id);
-      if (!p) return null;
-      const z = 10, [x, y] = tileOf(p[0], p[1], z);
-      let res;
-      try { res = await withTimeout(`https://tiles.mapillary.com/maps/vtp/mly1_public/2/${z}/${x}/${y}?access_token=${encodeURIComponent(token)}`); }
-      catch { return null; }
-      if (res.status === 401 || res.status === 403) throw new Error('Zły klucz Mapillary.');
-      if (!res.ok) return null;
-      const seq = decodeMvt(await res.arrayBuffer()).sequence;
-      if (!seq || !seq.feats.length) return null;
-      const all = seq.feats.map((_, i) => seq.feature(i)).filter(f => f.props.image_id && f.first);
-      const best = all.filter(f => f.props.is_pano && !f.props.foot), car = all.filter(f => !f.props.foot);
-      const f = pick(best.length ? best : car.length ? car : all);
-      if (!f) return null;
-      const ll = tileToLonLat(z, x, y, f.first[0], f.first[1], seq.extent);
-      const real = world.features.find(ft => ft.properties.c && d3.geoContains(ft, ll));
-      return { t: 'ulice', id: String(f.props.image_id), ll, c: real ? real.properties.c : c.id, pano: !!f.props.is_pano };
-    };
-    // najpierw szukamy panoram 360°, zwykłe zdjęcia tylko gdy w okolicy nie ma żadnej panoramy
-    let fallback = null;
-    for (let batch = 0; batch < 8; batch++) {
-      const got = (await Promise.all([tryOne(), tryOne(), tryOne(), tryOne(), tryOne(), tryOne()])).filter(Boolean);
-      const pano = got.find(g => g.pano);
-      if (pano) return pano;
-      fallback = fallback || got[0];
-      if (fallback && batch >= 3) return fallback;
-    }
-    if (fallback) return fallback;
-    throw new Error('Nie udało się znaleźć zdjęć ulicznych — spróbuj jeszcze raz.');
-  }
 
   function renderGra() {
     const v = $('#v-gra');
@@ -1013,28 +894,13 @@
     gra.rounds = [];
     v.innerHTML = `<a class="back" href="#nauka">← Nauka</a>
       <div class="card setup"><h2>🎮 Zagraj jak w GeoGuessr</h2>
-        <div class="segs" id="graSrc"><button class="seg ${gra.src === 'foto' ? 'active' : ''}" data-src="foto">📸 Zdjęcia wskazówek</button><button class="seg ${gra.src === 'ulice' ? 'active' : ''}" data-src="ulice">🌐 Prawdziwe ulice</button></div>
-        <p class="muted" id="graDesc"></p>
-        <div id="graMly"></div>
+        <p class="muted">Dostajesz zdjęcie prawdziwej wskazówki (słupek, znak, tablica, krajobraz). Kliknij na mapie, gdzie to jest, i zatwierdź. Trafiony kraj = 5000 pkt, im dalej od granicy, tym mniej.</p>
         <label>Region <select id="graRegion">${`<option value="all">Cały świat</option>` + REGIONS.map(r => `<option ${r === gra.region ? 'selected' : ''}>${r}</option>`).join('')}</select></label>
         <button class="btn primary big" id="graStart">Start — 5 rund ➜</button>
-        <p class="muted small">${store.get('graBest', null) != null ? `🏆 Rekord (zdjęcia): ${fmt(store.get('graBest'))} · ` : ''}${store.get('graBestU', null) != null ? `🏆 Rekord (ulice): ${fmt(store.get('graBestU'))} · ` : ''}Mapę przybliżasz kółkiem myszy, dwoma palcami albo przyciskami +/−.</p>
+        <p class="muted small">${store.get('graBest', null) != null ? `🏆 Twój rekord: ${fmt(store.get('graBest'))} / 25 000 · ` : ''}Mapę przybliżasz kółkiem myszy, dwoma palcami albo przyciskami +/−.</p>
         <a class="btn" href="#dzien">📅 Wyzwanie dnia ze znajomymi</a></div>`;
-    const desc = () => {
-      $('#graDesc').textContent = gra.src === 'foto'
-        ? 'Dostajesz zdjęcie prawdziwej wskazówki (słupek, znak, tablica, krajobraz). Trafiony kraj = 5000 pkt, im dalej od granicy, tym mniej.'
-        : 'Prawdziwe zdjęcia uliczne (często 360°) z losowego miejsca — rozglądaj się, chodź po drodze strzałkami. Punkty liczone od dokładnego miejsca, jak w GeoGuessr.';
-      mlyToken().then(tok => {
-        const box = $('#graMly'); if (!box) return;
-        box.innerHTML = gra.src === 'ulice' && !tok ? `<div class="tip small">🔑 Ten tryb potrzebuje darmowego klucza Mapillary. Załóż konto na mapillary.com → Developers → „Register application” → skopiuj <b>Client Token</b> (zaczyna się od MLY|) i wklej poniżej (zapisze się tylko na tym urządzeniu) albo dodaj go w Cloudflare jako MAPILLARY_TOKEN — wtedy zadziała u wszystkich znajomych.</div>
-          <label>Klucz Mapillary <input id="mlyTok" placeholder="MLY|…"></label>` : '';
-        const inp = $('#mlyTok'); if (inp) inp.onchange = () => { store.set('mlyToken', inp.value.trim()); };
-      });
-    };
-    desc();
-    $$('[data-src]').forEach(b => b.onclick = () => { gra.src = b.dataset.src; store.set('graSrc', gra.src); $$('[data-src]').forEach(x => x.classList.toggle('active', x === b)); desc(); });
     $('#graRegion').onchange = e => { gra.region = e.target.value; store.set('graRegion', gra.region); };
-    $('#graStart').onclick = () => startGra(gra.src);
+    $('#graStart').onclick = () => startGra();
   }
 
   async function photoRounds(pool, n, rnd = Math.random) {
@@ -1054,61 +920,32 @@
     return rounds;
   }
 
-  async function startGra(src, preset = null) {
+  async function startGra(preset = null) {
     const v = $('#v-gra');
-    v.innerHTML = `<div class="loading">${src === 'ulice' ? 'Szukam miejsca na świecie…' : 'Losuję zdjęcia…'}</div>`;
+    v.innerHTML = '<div class="loading">Losuję zdjęcia…</div>';
     const pool = C.filter(c => !c.minor && (gra.region === 'all' || c.region === gra.region));
-    Object.assign(gra, { mode: preset ? 'dzien' : src, i: 0, total: 0, results: [], rounds: [] });
-    try {
-      if (preset) gra.rounds = preset;
-      else if (src === 'ulice') {
-        const token = await mlyToken();
-        if (!token) { renderGra(); return; }
-        gra.token = token; gra.pool = pool;
-        const world = await GMMap.load(); gra.world = world;
-        gra.rounds = [await findStreet(world, pool, token)];
-        gra.next = findStreet(world, pool, token).catch(() => null);
-      } else {
-        const G = await loadJSON('data/gallery.json').catch(() => null);
-        gra.rounds = (await photoRounds(shuffle(pool).slice(0, 12), 5));
-        // czasem zdjęcie z galerii GeoHints zamiast Plonk It
-        if (G) gra.rounds = gra.rounds.map(r => { if (Math.random() >= 0.3) return r; const g = makeSpec('photo', [byId[r.c]], 'all', {}, G); return g.t === 'photo' ? g : r; });
-      }
-    } catch (e) { v.innerHTML = `<a class="back" href="#gra">← Wróć</a><div class="empty">${esc(e.message || 'Nie udało się przygotować gry.')}</div>`; gra.rounds = []; return; }
+    Object.assign(gra, { mode: preset ? 'dzien' : 'foto', i: 0, total: 0, results: [], rounds: [] });
+    if (preset) gra.rounds = preset;
+    else {
+      const G = await loadJSON('data/gallery.json').catch(() => null);
+      gra.rounds = await photoRounds(shuffle(pool).slice(0, 12), 5);
+      // czasem zdjęcie z galerii GeoHints zamiast Plonk It
+      if (G) gra.rounds = gra.rounds.map(r => { if (Math.random() >= 0.3) return r; const g = makeSpec('photo', [byId[r.c]], 'all', {}, G); return g.t === 'photo' ? g : r; });
+    }
     if (!gra.rounds.length) { v.innerHTML = '<div class="empty">Nie udało się wczytać zdjęć. Sprawdź połączenie.</div>'; return; }
     renderGraRound();
   }
-  const graCount = () => gra.mode === 'ulice' ? 5 : gra.rounds.length;
 
   function renderGraRound() {
-    const v = $('#v-gra'), sp = gra.rounds[gra.i], street = sp.t === 'ulice';
+    const v = $('#v-gra'), sp = gra.rounds[gra.i];
     gra.guess = null; gra.answered = false;
-    if (gra.viewer) { try { gra.viewer.remove(); } catch { /* */ } gra.viewer = null; }
-    v.innerHTML = `<div class="gra-head"><a class="back" href="#nauka" id="graQuit">✕</a><b>${gra.mode === 'dzien' ? '📅 Wyzwanie dnia · ' : ''}Runda ${gra.i + 1} / ${graCount()}</b><span>⭐ ${fmt(gra.total)} pkt</span></div>
-      <div class="gra-wrap ${street ? 'street' : ''}">
-        ${street ? `<div class="gra-photo gra-street"><div id="mly"></div>${sp.pano ? '<span class="mly-tag">🌐 360° — przeciągnij, żeby się rozejrzeć</span>' : '<span class="mly-tag">📷 zwykłe zdjęcie — strzałkami idziesz dalej po drodze</span>'}</div>`
-          : `<div class="gra-photo">${sp.lab ? `<div class="fc-cat">📸 ${esc(sp.lab)}</div>` : ''}<button class="qphoto" data-lb="0"><img src="${esc(sp.img)}" alt=""></button><p class="muted small">Stuknij zdjęcie, aby powiększyć.</p></div>`}
+    v.innerHTML = `<div class="gra-head"><a class="back" href="#nauka" id="graQuit">✕</a><b>${gra.mode === 'dzien' ? '📅 Wyzwanie dnia · ' : ''}Runda ${gra.i + 1} / ${gra.rounds.length}</b><span>⭐ ${fmt(gra.total)} pkt</span></div>
+      <div class="gra-wrap">
+        <div class="gra-photo">${sp.lab ? `<div class="fc-cat">📸 ${esc(sp.lab)}</div>` : ''}<button class="qphoto" data-lb="0"><img src="${esc(sp.img)}" alt=""></button><p class="muted small">Stuknij zdjęcie, aby powiększyć.</p></div>
         <div class="gra-mapcol"><div id="graMap"><div class="loading">Ładowanie mapy…</div></div>
           <button class="btn primary big" id="graGo" disabled>📍 Postaw pinezkę na mapie</button><div id="graRes"></div></div>
       </div>`;
-    if (!street) bindLightbox(v.querySelector('.gra-photo'), [{ src: sp.img, cap: '' }]);
-    else {
-      const fail = () => {
-        const el = $('#mly'); if (!el || gra.rounds[gra.i] !== sp) return;
-        el.innerHTML = `<div class="empty">😕 Mapillary nie udostępnił tego zdjęcia.<br><small>Jeśli to się powtarza, klucz może jeszcze nie być w pełni aktywny po stronie Mapillary (zwykle trwa to do kilku godzin).</small><br><br><button class="btn primary" id="mlyNext">🔄 Inne miejsce</button> <button class="btn" id="mlyFoto">📸 Graj zdjęciami wskazówek</button></div>`;
-        $('#mlyNext').onclick = async () => { el.innerHTML = '<div class="loading">Szukam innego miejsca…</div>'; const loc = await findStreet(gra.world, gra.pool, gra.token).catch(() => null); if (loc) { gra.rounds[gra.i] = loc; renderGraRound(); } else fail(); };
-        $('#mlyFoto').onclick = () => { gra.rounds = []; gra.src = 'foto'; store.set('graSrc', 'foto'); startGra('foto'); };
-      };
-      loadMapillary().then(m => {
-        gra.viewer = new m.Viewer({ accessToken: gra.token, container: 'mly', imageId: sp.id, component: { cover: false } });
-        const viewer = gra.viewer, fit = () => { try { viewer.resize(); } catch { /* */ } };
-        [50, 300, 1000].forEach(t => setTimeout(fit, t));
-        if (!window.__mlyResize) { window.__mlyResize = true; addEventListener('resize', () => { if (gra.viewer) try { gra.viewer.resize(); } catch { /* */ } }); }
-        let ok = false;
-        gra.viewer.on('image', ev => { ok = true; const img = ev.image; if (img && img.lngLat) sp.ll = [img.lngLat.lng, img.lngLat.lat]; });
-        setTimeout(() => { if (!ok) fail(); }, 15000);
-      }).catch(fail);
-    }
+    bindLightbox(v.querySelector('.gra-photo'), [{ src: sp.img, cap: '' }]);
     $('#graQuit').onclick = e => { e.preventDefault(); if (confirm('Przerwać grę?')) { gra.rounds = []; location.hash = 'nauka'; } };
     GMMap.load().then(world => {
       gra.world = world;
@@ -1127,53 +964,37 @@
   function answerGra() {
     if (!gra.guess || gra.answered) return;
     gra.answered = true; logActivity();
-    const sp = gra.rounds[gra.i], c = byId[sp.c], street = sp.t === 'ulice';
-    const km = street ? d3.geoDistance(gra.guess, sp.ll) * 6371 : GMMap.distanceKm(gra.world, sp.c, gra.guess);
-    const pts = graScore(km), inCountry = street ? GMMap.distanceKm(gra.world, sp.c, gra.guess) === 0 : km === 0;
+    const sp = gra.rounds[gra.i], c = byId[sp.c];
+    const km = GMMap.distanceKm(gra.world, sp.c, gra.guess), pts = graScore(km), inCountry = km === 0;
     gra.total += pts; gra.results.push({ c, pts, km, inCountry });
-    const target = street ? sp.ll : GMMap.centerOf(gra.world, sp.c);
-    if (c) gra.api.highlight(sp.c, 'hl-good');
-    if (target && (km > 0.025)) { gra.api.line(gra.guess, target); gra.api.setMarker(target, 'answer'); gra.api.zoomTo([gra.guess, target]); }
+    const target = GMMap.centerOf(gra.world, sp.c);
+    gra.api.highlight(sp.c, 'hl-good');
+    if (target && !inCountry) { gra.api.line(gra.guess, target); gra.api.setMarker(target, 'answer'); gra.api.zoomTo([gra.guess, target]); }
     else if (target) gra.api.zoomTo([target]);
-    if (!street && !inCountry && !mistakes.some(m => specKey(m) === specKey(sp))) { mistakes = [sp, ...mistakes].slice(0, 200); store.set('mistakes', mistakes); }
+    if (!inCountry && !mistakes.some(m => specKey(m) === specKey(sp))) { mistakes = [sp, ...mistakes].slice(0, 200); store.set('mistakes', mistakes); }
     $('.gra-head span').textContent = `⭐ ${fmt(gra.total)} pkt`;
-    const name = c ? `${flag(c.id, 'sm')} ${esc(c.name)}` : esc(sp.c.toUpperCase());
-    const msg = street
-      ? `${inCountry ? '✅ Dobry kraj!' : '❌'} To był(a) <b>${name}</b> — ${fmt(Math.round(km))} km od Twojej pinezki`
-      : km > 0 ? `❌ To był(a) <b>${name}</b> — pinezka ${fmt(Math.round(km))} km od granicy` : `✅ Trafiony kraj: <b>${name}</b>`;
-    $('#graRes').innerHTML = `<div class="gra-result ${inCountry ? 'good' : 'bad'}"><div class="gra-pts">${fmt(pts)} <small>pkt</small></div><div>${msg}</div></div>
+    const name = `${flag(c.id, 'sm')} ${esc(c.name)}`;
+    $('#graRes').innerHTML = `<div class="gra-result ${inCountry ? 'good' : 'bad'}"><div class="gra-pts">${fmt(pts)} <small>pkt</small></div>
+        <div>${inCountry ? `✅ Trafiony kraj: <b>${name}</b>` : `❌ To był(a) <b>${name}</b> — pinezka ${fmt(Math.round(km))} km od granicy`}</div></div>
       ${sp.cap ? `<div class="qex-cap">${txt(sp.cap)}${mapLink(sp.map)}</div>` : ''}
-      ${street && c ? `<div class="qex-cap"><b>Po czym rozpoznać ${esc(c.name)}?</b> ${esc(c.summary)}</div>` : ''}
-      <p class="muted small">${c ? `<a href="#kraj/${c.id}">Otwórz kartę kraju →</a>` : ''}${street ? ` · <a href="https://www.google.com/maps/@?api=1&map_action=map&center=${sp.ll[1]},${sp.ll[0]}&zoom=12" target="_blank" rel="noopener">Pokaż miejsce w Google Maps ↗</a>` : ''}</p>`;
-    $('#graGo').textContent = gra.i + 1 < graCount() ? 'Następna runda ➜' : 'Zobacz wynik 🏁';
+      <p class="muted small"><a href="#kraj/${c.id}">Otwórz kartę kraju →</a></p>`;
+    $('#graGo').textContent = gra.i + 1 < gra.rounds.length ? 'Następna runda ➜' : 'Zobacz wynik 🏁';
   }
 
-  async function nextGraRound() {
+  function nextGraRound() {
     gra.i++;
-    if (gra.i < graCount()) {
-      if (gra.mode === 'ulice' && !gra.rounds[gra.i]) {
-        $('#graGo').disabled = true; $('#graGo').textContent = 'Szukam kolejnego miejsca…';
-        let loc = await gra.next;
-        if (!loc) loc = await findStreet(gra.world, gra.pool, gra.token).catch(() => null);
-        if (!loc) { $('#graGo').textContent = 'Nie znalazłem miejsca — spróbuj ponownie'; $('#graGo').disabled = false; gra.i--; return; }
-        gra.rounds[gra.i] = loc;
-        if (gra.i + 1 < 5) gra.next = findStreet(gra.world, gra.pool, gra.token).catch(() => null);
-      }
-      return renderGraRound();
-    }
-    if (gra.viewer) { try { gra.viewer.remove(); } catch { /* */ } gra.viewer = null; }
+    if (gra.i < gra.rounds.length) return renderGraRound();
     if (gra.mode === 'dzien') return renderDzienKoniec();
-    const key = gra.mode === 'ulice' ? 'graBestU' : 'graBest';
-    const best = store.get(key, null), record = best == null || gra.total > best;
-    if (record) store.set(key, gra.total);
+    const best = store.get('graBest', null), record = best == null || gra.total > best;
+    if (record) store.set('graBest', gra.total);
     $('#v-gra').innerHTML = `<div class="card result"><div class="score">${fmt(gra.total)}</div><div>na 25 000 pkt ${record ? '· 🏆 Nowy rekord!' : `· rekord ${fmt(best)}`}</div>
       ${graSummary()}
-      ${gra.mode === 'foto' ? '<p class="muted small">Pomylone zdjęcia trafiły do „Moje błędy”.</p>' : ''}
+      <p class="muted small">Pomylone zdjęcia trafiły do „Moje błędy”.</p>
       <p class="result-actions"><button class="btn primary" id="graAgain">Zagraj jeszcze raz</button><a class="btn" href="#dzien">📅 Wyzwanie dnia</a><a class="btn" href="#nauka">🎓 Nauka</a></p></div>`;
-    const mode = gra.mode; gra.rounds = [];
-    $('#graAgain').onclick = () => startGra(mode);
+    gra.rounds = [];
+    $('#graAgain').onclick = () => startGra();
   }
-  const graSummary = () => `<div class="gra-sum">${gra.results.map((r, i) => `<a href="${r.c ? '#kraj/' + r.c.id : '#gra'}">${i + 1}. ${r.c ? flag(r.c.id, 'sm') + ' ' + esc(r.c.name) : '?'} <b>${fmt(r.pts)}</b>${r.inCountry ? ' ✅' : ` <small>(${fmt(Math.round(r.km))} km)</small>`}</a>`).join('')}</div>`;
+  const graSummary = () => `<div class="gra-sum">${gra.results.map((r, i) => `<a href="#kraj/${r.c.id}">${i + 1}. ${flag(r.c.id, 'sm')} ${esc(r.c.name)} <b>${fmt(r.pts)}</b>${r.inCountry ? ' ✅' : ` <small>(${fmt(Math.round(r.km))} km)</small>`}</a>`).join('')}</div>`;
 
   // ═════════ WYZWANIE DNIA (te same 5 zdjęć dla wszystkich, ranking znajomych) ═════════
   const dzisiaj = (offset = 0) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Warsaw' }).format(new Date(Date.now() + offset * 864e5));
@@ -1216,7 +1037,7 @@
       v.innerHTML = '<div class="loading">Przygotowuję dzisiejsze zdjęcia…</div>';
       const rounds = await photoRounds(C.filter(c => !c.minor && c.diff <= 2), 5, seeded('geometa-' + day));
       gra.dzien = day;
-      startGra('foto', rounds);
+      startGra(rounds);
     };
   }
   function shareDaily(day, done) {

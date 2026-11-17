@@ -5,7 +5,6 @@ Strona do nauki mety GeoGuessr po polsku, wygodna na telefonie i komputerze.
 ## Co jest w środku
 - **GeoMeta Asystent** (`asystent/`) — aplikacja na Windows: nauka po każdej rundzie GeoGuessra (F10) i opcjonalne podpowiedzi w treningu (zablokowane w trybach rankingowych).
 - **📅 Wyzwanie dnia** — codziennie te same 5 zdjęć dla wszystkich, ranking znajomych (tylko nick) i wynik do skopiowania z kolorowymi kwadracikami.
-- **🌐 Prawdziwe ulice** — losowe miejsce z panoram Mapillary (często 360°, można chodzić), punkty od dokładnego miejsca jak w GeoGuessr.
 - **🃏 Fiszki ze zdjęć** — ok. 3700 zdjęć (Plonk It + GeoHints) z powtórkami rozłożonymi w czasie.
 - **🎮 Gra jak w GeoGuessr** — zdjęcie prawdziwej wskazówki → kliknij na mapie świata → punkty (do 5000 za rundę, 5 rund, rekord).
 - **🗺️ Mapa świata** w zakładce Kraje — kolory pokazują postęp nauki, kliknięcie otwiera kraj.
@@ -51,9 +50,8 @@ npx wrangler pages deploy . --project-name geometa
 ```
 (nagłówki cache są w `_headers`).
 
-### Ranking wyzwania dnia i „Prawdziwe ulice”
-- **Ranking dnia** potrzebuje tylko bazy KV podpiętej jako `GEOMETA_KV` (Settings → Bindings → KV namespace). Bez niej wyzwanie działa, ale wynik zostaje tylko na urządzeniu.
-- **Prawdziwe ulice** potrzebują darmowego klucza Mapillary: załóż konto na mapillary.com → Dashboard → **Developers** → **Register application** (dowolna nazwa, zaznacz „Read”) → skopiuj **Client Token** (`MLY|…`). Dodaj go w Cloudflare: Settings → Variables and Secrets → `MAPILLARY_TOKEN` → Retry deployment. Wtedy tryb działa u wszystkich znajomych. (Albo wklej klucz bezpośrednio w grze — zapisze się tylko na tym urządzeniu.)
+### Ranking wyzwania dnia
+Ranking potrzebuje tylko bazy KV podpiętej jako `GEOMETA_KV` (Settings → Bindings → KV namespace). Bez niej wyzwanie działa, ale wynik zostaje tylko na urządzeniu.
 
 ### Prywatna sekcja 🔒 Moje (opcjonalnie)
 Strona ma ukrytą sekcję (kłódka w stopce, adres `/#moje`) na rundy z **GeoMeta Asystenta** — aplikacji na komputer w folderze [`asystent/`](asystent/README.md). Wymaga w Cloudflare Pages bazy KV (`GEOMETA_KV`) i sekretów `ADMIN_USER`, `ADMIN_PASS`, `SESSION_SECRET`, `UPLOAD_TOKEN` — instrukcja krok po kroku w [`asystent/README.md`](asystent/README.md). Bez tego reszta strony działa normalnie.

@@ -2,7 +2,6 @@
 // Wymaga w ustawieniach projektu Cloudflare Pages:
 //   • KV namespace binding:  GEOMETA_KV
 //   • Zmienne (jako „Secret”): ADMIN_USER, ADMIN_PASS, SESSION_SECRET, UPLOAD_TOKEN
-//   • Opcjonalnie: MAPILLARY_TOKEN (klucz klienta Mapillary do trybu „Prawdziwe ulice”)
 // Bez nich API zwraca 503, a reszta strony działa normalnie.
 
 const COOKIE = 'gm_sess';
@@ -64,7 +63,7 @@ export async function onRequest({ request, env, params }) {
   const method = request.method;
 
   // ── publiczne: konfiguracja i wyzwanie dnia (bez logowania) ──
-  if (path === '/config') return json({ mapillary: env.MAPILLARY_TOKEN || null, ranking: !!env.GEOMETA_KV });
+  if (path === '/config') return json({ ranking: !!env.GEOMETA_KV });
   const daily = path.match(/^\/daily\/(\d{4}-\d{2}-\d{2})$/);
   if (daily) {
     if (!env.GEOMETA_KV) return json({ error: 'Ranking nie jest skonfigurowany (brak KV).' }, 503);

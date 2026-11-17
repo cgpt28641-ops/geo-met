@@ -472,12 +472,6 @@ table.rank { width: 100%; border-collapse: collapse; font-size: .92rem; }
 .rank th { color: var(--muted); font-size: .75rem; text-transform: uppercase; }
 .rank tr.me td { background: var(--accent-soft); font-weight: 700; }
 .result h3 { margin-top: 22px; }
-/* prawdziwe ulice */
-.gra-wrap.street { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
-.gra-street { padding: 0; overflow: hidden; text-align: left; }
-#mly canvas.mapillary-canvas { left: 0; top: 0; }
-.mly-tag { position: absolute; left: 10px; top: 10px; z-index: 5; background: rgba(0,0,0,.65); color: #fff; font-size: .78rem; padding: 4px 10px; border-radius: 99px; pointer-events: none; }
-#mly { width: 100%; height: min(70vh, 640px); position: relative; }
 
 /* ───────── Mobile ───────── */
 @media (max-width: 860px) {
@@ -540,9 +534,7 @@ table.rank { width: 100%; border-collapse: collapse; font-size: .92rem; }
   .fc-actions #fcFlip { grid-column: 1 / -1; order: -1; }
   kbd { display: none; }
   .answers { grid-template-columns: 1fr; }
-  .gra-wrap, .gra-wrap.street { grid-template-columns: 1fr; gap: 10px; }
-  #mly { height: 46vh; }
-  .fc-photo { max-height: 190px; }
+  .gra-wrap,     .fc-photo { max-height: 190px; }
   .gra-photo { position: static; padding: 8px; }
   .gra-photo .qphoto img { max-height: 27vh; }
   .gra-photo p { display: none; }
