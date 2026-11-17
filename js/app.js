@@ -49,18 +49,19 @@
     const h = location.hash.slice(1) || 'nauka';
     const [view, arg] = h.split('/');
     if (currentRoute) scrollPos[currentRoute] = scrollY;
-    const tab = view === 'kraj' ? 'kraje' : view === 'lekcja' ? 'nauka' : view;
+    const tab = view === 'kraj' ? 'kraje' : view === 'lekcja' || view === 'moje' ? 'nauka' : view;
     if (view !== 'kraj') document.title = 'GeoMeta — meta GeoGuessr po polsku';
     $$('#tabs a').forEach(a => a.classList.toggle('active', a.dataset.tab === tab));
     $$('.view').forEach(v => v.classList.toggle('active', v.id === 'v-' + view));
     if (view === 'kraj' && byId[arg]) renderCountry(arg);
     else if (view === 'kraj') return (location.hash = 'kraje');
     if (view === 'nauka') renderNauka();
+    if (view === 'moje') renderMoje();
     if (view === 'lekcja') { if (lessonById[arg]) renderLesson(arg); else return (location.hash = 'nauka'); }
     if (view === 'fiszki') fcNext();
     if (view === 'poradniki' && arg) { const d = document.getElementById('g-' + arg); if (d) { d.open = true; setTimeout(() => d.scrollIntoView({ block: 'start' }), 30); } }
     currentRoute = h;
-    if (!(view === 'poradniki' && arg)) requestAnimationFrame(() => scrollTo(0, ['kraj', 'lekcja', 'quiz'].includes(view) ? 0 : (scrollPos[h] || 0)));
+    if (!(view === 'poradniki' && arg)) requestAnimationFrame(() => scrollTo(0, ['kraj', 'lekcja', 'quiz', 'moje'].includes(view) ? 0 : (scrollPos[h] || 0)));
     if (['nauka', 'kraje', 'porownaj', 'poradniki'].includes(view)) store.set('tab', view);
   }
   addEventListener('hashchange', route);
@@ -750,6 +751,81 @@
     $('#lFc').onclick = () => { fc.only = ids; fc.extra = true; fcSet.mode = 'clue'; $('#fcMode').value = 'clue'; location.hash = 'fiszki'; fcNext(); };
     $('#lPhoto').onclick = () => { location.hash = 'quiz'; startQuiz({ pool: l.countries, n: 10, types: ['photo'], title: l.title }); };
     $('#lTest').onclick = () => { location.hash = 'quiz'; startQuiz({ pool: l.countries, n: 12, types: ['clue', 'clue', 'clue', 'photo', 'photo'], title: `Test: ${l.title}`, lesson: id }); };
+  }
+
+  // ═════════ MOJE (prywatne, za logowaniem) ═════════
+  const api = (path, opts = {}) => fetch('/api' + path, { credentials: 'same-origin', headers: { 'content-type': 'application/json' }, ...opts })
+    .then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw Object.assign(new Error(d.error || r.status), { status: r.status }); return d; });
+  let mojeCache = null;
+
+  function importujBledy(rundy) {
+    let dodane = 0;
+    for (const r of rundy) {
+      if (r.trafiony_kraj || !r.zagadka || !byId[r.poprawny_kod]) continue;
+      const sp = { t: 'clue', c: r.poprawny_kod, k: 'inne', v: r.zagadka };
+      if (!mistakes.some(m => specKey(m) === specKey(sp))) { mistakes.unshift(sp); dodane++; }
+    }
+    mistakes = mistakes.slice(0, 200); store.set('mistakes', mistakes);
+    return dodane;
+  }
+
+  function renderMoje() {
+    const v = $('#v-moje');
+    v.innerHTML = '<div class="loading">Sprawdzam logowanie…</div>';
+    api('/me').then(d => d.zalogowany ? renderMojeDane() : renderLogin()).catch(e => {
+      v.innerHTML = `<a class="back" href="#nauka">← Nauka</a><div class="card setup"><h2>🔒 Prywatna sekcja</h2><p class="muted">${e.status === 503 ? esc(e.message) : 'Prywatna sekcja działa tylko na stronie wdrożonej na Cloudflare Pages (z funkcjami i KV).'}</p></div>`;
+    });
+  }
+  function renderLogin() {
+    const v = $('#v-moje');
+    v.innerHTML = `<a class="back" href="#nauka">← Nauka</a>
+      <form class="card setup" id="loginForm"><h2>🔒 Zaloguj się</h2>
+        <p class="muted small">Prywatna sekcja z rundami z GeoMeta Asystenta.</p>
+        <label>Login <input name="user" autocomplete="username" required></label>
+        <label>Hasło <input name="pass" type="password" autocomplete="current-password" required></label>
+        <button class="btn primary big">Zaloguj</button><p class="muted small" id="loginErr"></p></form>`;
+    $('#loginForm').onsubmit = e => {
+      e.preventDefault();
+      const f = new FormData(e.target);
+      api('/login', { method: 'POST', body: JSON.stringify({ user: f.get('user'), pass: f.get('pass') }) })
+        .then(() => renderMojeDane()).catch(err => { $('#loginErr').textContent = '❌ ' + err.message; });
+    };
+  }
+  function renderMojeDane() {
+    const v = $('#v-moje');
+    v.innerHTML = '<div class="loading">Wczytuję twoje rundy…</div>';
+    api('/rundy').then(({ rundy }) => {
+      mojeCache = rundy;
+      const dodane = importujBledy(rundy);
+      const traf = rundy.filter(r => r.trafiony_kraj).length;
+      const kraje = {};
+      for (const r of rundy) { const k = kraje[r.poprawny_kod] = kraje[r.poprawny_kod] || { n: 0, ok: 0, name: r.poprawny_kraj }; k.n++; if (r.trafiony_kraj) k.ok++; }
+      const najg = Object.entries(kraje).sort((a, b) => a[1].ok / a[1].n - b[1].ok / b[1].n || b[1].n - a[1].n).slice(0, 8);
+      const lb = [];
+      v.innerHTML = `<a class="back" href="#nauka">← Nauka</a>
+        <div class="hero hero-sm"><h1>🔒 Moje rundy</h1>
+          <div class="stats4">
+            <div class="stat"><b>${rundy.length}</b><small>rund z Asystenta</small></div>
+            <div class="stat"><b>${rundy.length ? Math.round(traf / rundy.length * 100) : 0}%</b><small>trafiony kraj</small></div>
+            <div class="stat"><b>${mistakes.length}</b><small>w „Moje błędy”${dodane ? ` (+${dodane} nowe)` : ''}</small></div>
+            <div class="stat"><button class="btn" id="logout">Wyloguj</button></div>
+          </div></div>
+        ${najg.length ? `<h3 class="phead">Najczęściej mylone kraje</h3><div class="flaglist">${najg.map(([id, k]) => `<a href="#kraj/${esc(id)}">${byId[id] ? flag(id, 'sm') : ''}${esc(k.name)} ${k.ok}/${k.n}</a>`).join('')}</div>` : ''}
+        <div class="actions-grid" style="margin-top:14px"><button class="action" id="mojeQuiz" ${mistakes.length ? '' : 'disabled'}><span class="ai">❌</span><b>Powtórz moje błędy</b><small>quiz z rund, w których nie trafiłeś</small></button></div>
+        <h3 class="phead">Historia</h3>
+        <div class="moje-list">${rundy.map(r => `<div class="mr ${r.trafiony_kraj ? 'ok' : 'zle'}">
+          <div class="mr-h">${byId[r.poprawny_kod] ? flag(r.poprawny_kod, 'sm') : ''}<b>${esc(r.poprawny_kraj)}</b><span class="muted small">${esc(r.miejsce || '')}</span>
+            <span class="mr-s">${r.trafiony_kraj ? '✅ trafiony' : '❌ ' + esc(r.twoj_strzal || '')}</span>
+            <small class="muted">${esc((r.czas || '').replace('T', ' ').slice(0, 16))}</small>
+            <button class="link" data-del="${esc(r.id)}">usuń</button></div>
+          <div class="ggrid">${Array.from({ length: r.obrazy || 0 }, (_, i) => { lb.push({ src: `/api/img/${r.id}/${i}`, cap: r.lekcja }); return `<button class="gthumb" data-lb="${lb.length - 1}"><img src="/api/img/${esc(r.id)}/${i}" alt="" loading="lazy"></button>`; }).join('')}</div>
+          <p>${esc(r.lekcja)}</p>${(r.przeoczone || []).length ? `<ul>${r.przeoczone.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+        </div>`).join('') || '<div class="empty">Brak rund. Uruchom GeoMeta Asystenta i po rundzie naciśnij F10.</div>'}</div>`;
+      bindLightbox(v, lb);
+      $('#logout').onclick = () => api('/logout').then(renderLogin);
+      $('#mojeQuiz').onclick = () => { location.hash = 'quiz'; $('#qMistakes').click(); };
+      v.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { if (confirm('Usunąć tę rundę?')) api('/rundy/' + b.dataset.del, { method: 'DELETE' }).then(renderMojeDane); });
+    }).catch(e => { if (e.status === 401) renderLogin(); else v.innerHTML = `<div class="empty">Błąd: ${esc(e.message)}</div>`; });
   }
 
   // ── klawiatura ──

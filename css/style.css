@@ -380,6 +380,19 @@ select:focus { outline: 2px solid var(--accent); }
 .question:has(.qphoto) { padding: 14px; }
 .result-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 
+
+/* prywatna sekcja */
+.lock { margin-left: 6px; text-decoration: none; opacity: .5; }
+.lock:hover { opacity: 1; }
+.setup input { width: 100%; font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 11px 12px; }
+.moje-list { display: grid; gap: 10px; }
+.mr { background: var(--surface); border: 1px solid var(--border); border-left: 5px solid var(--good); border-radius: 14px; padding: 12px 14px; }
+.mr.zle { border-left-color: var(--bad); }
+.mr-h { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.mr-s { font-weight: 600; font-size: .88rem; }
+.mr-h small { margin-left: auto; }
+.mr p { margin: 8px 0 4px; }
+
 /* ───────── Mobile ───────── */
 @media (max-width: 860px) {
   .sections { columns: 1; }

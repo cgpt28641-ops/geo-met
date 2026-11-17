@@ -1,5 +1,5 @@
 // Offline: najpierw sieć dla plików strony, cache jako zapas; flagi cache-first.
-const CACHE = 'geometa-v6';
+const CACHE = 'geometa-v7';
 const CORE = ['./', 'index.html', 'css/style.css', 'js/countries.js', 'js/guides.js', 'js/app.js', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', e => {
@@ -17,7 +17,7 @@ self.addEventListener('fetch', e => {
     })));
     return;
   }
-  if (url.origin !== location.origin) return;
+  if (url.origin !== location.origin || url.pathname.startsWith('/api/')) return;
   e.respondWith(fetch(e.request).then(res => {
     const copy = res.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); return res;
   }).catch(() => caches.match(e.request).then(r => r || caches.match('index.html'))));

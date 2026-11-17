@@ -1,0 +1,32 @@
+name: Zbuduj GeoMeta Asystent (Windows)
+
+on:
+  push:
+    paths:
+      - "asystent/**"
+      - ".github/workflows/asystent.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Zainstaluj zależności
+        working-directory: asystent
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+      - name: Sprawdź składnię
+        working-directory: asystent
+        run: python -m py_compile asystent.py silnik.py synchronizacja.py
+      - name: Zbuduj .exe
+        working-directory: asystent
+        run: pyinstaller --onefile --noconsole --name GeoMetaAsystent --add-data "meta_kontekst.txt;." asystent.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GeoMetaAsystent-Windows
+          path: asystent/dist/GeoMetaAsystent.exe

@@ -3,6 +3,7 @@
 Strona do nauki mety GeoGuessr po polsku, wygodna na telefonie i komputerze.
 
 ## Co jest w środku
+- **GeoMeta Asystent** (`asystent/`) — aplikacja na Windows: nauka po każdej rundzie GeoGuessra (F10) i opcjonalne podpowiedzi w treningu (zablokowane w trybach rankingowych).
 - **Nauka** — panel startowy: seria dni 🔥, dzienny cel, powtórki na dziś, „Moje błędy” oraz **ścieżka nauki** — lekcje z grupami krajów, które łatwo pomylić (przegląd kart → fiszki → test, 80% = zaliczone).
 - **Kraje** — 127 krajów i terytoriów (100 głównych) — ponad 2100 wskazówek: kamera Google, tablice, słupki, linie, znaki, język, słupy, przyroda, architektura. Każdy kraj ma zakładki: **Rozpoznanie**, **Regiony**, **Szczegóły** (karty ze zdjęciami z Plonk It, po polsku), **Ściąga** i **Galeria** (zdjęcia z GeoHints). Wyszukiwarka, filtry, oznaczanie krajów jako opanowane.
 - **Porównaj** — jedna kategoria obok siebie dla wszystkich krajów, jako opisy albo zdjęcia (16 galerii GeoHints: słupki, tablice, słupy, samochody Google i eskorty, szewrony, STOP, przejścia, drogowskazy…).
@@ -41,7 +42,10 @@ i otwórz http://localhost:8000 (karty ze zdjęciami ładują dane przez `fetch`
 npx wrangler login
 npx wrangler pages deploy . --project-name geometa
 ```
-(konfiguracja jest w `wrangler.toml`, nagłówki cache w `_headers`).
+(nagłówki cache są w `_headers`).
+
+### Prywatna sekcja 🔒 Moje (opcjonalnie)
+Strona ma ukrytą sekcję (kłódka w stopce, adres `/#moje`) na rundy z **GeoMeta Asystenta** — aplikacji na komputer w folderze [`asystent/`](asystent/README.md). Wymaga w Cloudflare Pages bazy KV (`GEOMETA_KV`) i sekretów `ADMIN_USER`, `ADMIN_PASS`, `SESSION_SECRET`, `UPLOAD_TOKEN` — instrukcja krok po kroku w [`asystent/README.md`](asystent/README.md). Bez tego reszta strony działa normalnie.
 
 ## Edycja treści
 - `js/countries.js` — ściąga krajów (Plonk It + Geometas, po polsku) używana też w fiszkach i quizie,
