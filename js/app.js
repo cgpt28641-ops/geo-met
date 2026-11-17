@@ -160,10 +160,14 @@
         <div class="fact"><small>Wskazówek</small><b>${allClues(c).length}</b></div>
       </div>
       ${(c.tips || []).length ? `<div class="tips">${c.tips.map(t => `<div class="tip">💡 ${esc(t)}</div>`).join('')}</div>` : ''}
-      <div class="toc"><div class="chips">${cats.map(k => `<button class="chip" data-jump="${k}">${CATS[k].icon} ${CATS[k].short}</button>`).join('')}</div></div>
-      <div class="sections">
-        ${cats.map(k => `<div class="sec" id="sec-${k}"><h3>${CATS[k].icon} ${CATS[k].label}</h3><ul>${c.clues[k].map(v => `<li>${esc(v)}</li>`).join('')}</ul></div>`).join('')}
+      <div class="ctabs" id="ctabs">
+        <button data-ct="r1">📸 <span>Rozpoznanie</span></button>
+        <button data-ct="r2">🗺️ <span>Regiony</span></button>
+        <button data-ct="r3">🔎 <span>Szczegóły</span></button>
+        <button data-ct="sc">📝 <span>Ściąga</span></button>
+        <button data-ct="gal">🖼️ <span>Galeria</span></button>
       </div>
+      <div id="cpBody" class="cp-body"></div>
       <div class="cp-actions">
         <button class="btn ${learned.has(id) ? '' : 'primary'}" id="toggleLearned">${learned.has(id) ? '↩️ Cofnij „opanowane”' : '✅ Opanowałem ten kraj'}</button>
         <button class="btn" id="drillCountry">🃏 Fiszki z tego kraju</button>
@@ -174,13 +178,103 @@
         <a href="#kraj/${prev.id}">← ${flag(prev.id, 'sm')} ${esc(prev.name)}</a>
         <a class="next" href="#kraj/${next.id}">${esc(next.name)} ${flag(next.id, 'sm')} →</a>
       </div>`;
-    $$('[data-jump]').forEach(b => b.onclick = () => document.getElementById('sec-' + b.dataset.jump).scrollIntoView({ behavior: 'smooth' }));
+    $$('[data-ct]').forEach(b => b.onclick = () => { ctab = b.dataset.ct; store.set('ctab', ctab); renderCountryTab(id); });
+    renderCountryTab(id);
     $('#toggleLearned').onclick = () => {
       learned.has(id) ? learned.delete(id) : learned.add(id);
       store.set('learned', [...learned]); renderGrid(); renderCountry(id);
     };
     $('#drillCountry').onclick = () => { fc.only = id; location.hash = 'fiszki'; fcNext(); };
   }
+
+  // ── zakładki karty kraju ──
+  let ctab = store.get('ctab', 'r1');
+  const PLONK_IMG = (p, w = 600) => /^https?:/.test(p) ? p : `https://www.plonkit.net/images/resize/${w}/80/${p}`;
+  const GH_IMG = p => p.startsWith('~') ? 'https://ocsc00skc0wokcs8kw8g8k84.geohints.com/storage/' + p.slice(1) : p;
+  const cache = {};
+  const loadJSON = url => cache[url] || (cache[url] = fetch(url).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).catch(e => { delete cache[url]; throw e; }));
+  const GAL = {
+    bollards: ['📍', 'Słupki drogowe'], licensePlates: ['🚘', 'Tablice rejestracyjne'], utilityPoles: ['🗼', 'Słupy energetyczne'],
+    googleVehicles_cars: ['📷', 'Samochody Google'], followCars: ['🚓', 'Samochody eskorty'], signs_chevrons: ['↪️', 'Szewrony'],
+    signs_stop: ['🛑', 'Znaki STOP'], signs_yield: ['🔻', 'Ustąp pierwszeństwa'], signs_pedestrian: ['🚸', 'Przejścia dla pieszych'],
+    signs_railwayCrossing: ['🚆', 'Przejazdy kolejowe'], signs_citySigns: ['🏙️', 'Tablice miejscowości'], signs_directions: ['🧭', 'Drogowskazy'],
+    signs_signPosts: ['🪧', 'Słupki pod znaki'], signs_speed: ['🚦', 'Ograniczenia prędkości'], signs_busStop: ['🚌', 'Przystanki'],
+    signs_animalWarning: ['🦌', 'Uwaga zwierzęta'],
+  };
+  const txt = t => esc(t).replace(/\n/g, '<br>');
+  const mapLink = m => m ? `<a class="maplink" href="${esc(m)}" target="_blank" rel="noopener">📍 Google Maps</a>` : '';
+
+  function renderCountryTab(id) {
+    const c = byId[id], body = $('#cpBody');
+    $$('[data-ct]').forEach(b => b.classList.toggle('active', b.dataset.ct === ctab));
+    if (ctab === 'sc') {
+      const cats = Object.keys(CATS).filter(k => c.clues[k] && c.clues[k].length);
+      body.innerHTML = `<div class="toc"><div class="chips">${cats.map(k => `<button class="chip" data-jump="${k}">${CATS[k].icon} ${CATS[k].short}</button>`).join('')}</div></div>
+        <div class="sections">${cats.map(k => `<div class="sec" id="sec-${k}"><h3>${CATS[k].icon} ${CATS[k].label}</h3><ul>${c.clues[k].map(v => `<li>${esc(v)}</li>`).join('')}</ul></div>`).join('')}</div>`;
+      $$('[data-jump]').forEach(b => b.onclick = () => document.getElementById('sec-' + b.dataset.jump).scrollIntoView({ behavior: 'smooth' }));
+      return;
+    }
+    body.innerHTML = '<div class="loading">Ładowanie…</div>';
+    if (ctab === 'gal') {
+      loadJSON('data/gallery.json').then(G => {
+        if (location.hash !== '#kraj/' + id || ctab !== 'gal') return;
+        let html = '', lb = [];
+        for (const [k, [icon, label]] of Object.entries(GAL)) {
+          const items = (G[k] || []).filter(x => x[0] === id);
+          if (!items.length) continue;
+          html += `<h3 class="phead">${icon} ${label} <span>${items.length}</span></h3><div class="ggrid">` + items.map(x => {
+            lb.push({ src: GH_IMG(x[1]), cap: `${label}${x[3] ? ' · ' + x[3] : ''}`, map: x[2] });
+            return `<button class="gthumb" data-lb="${lb.length - 1}"><img src="${esc(GH_IMG(x[1]))}" alt="" loading="lazy" decoding="async">${x[3] ? `<span>${esc(x[3])}</span>` : ''}</button>`;
+          }).join('') + '</div>';
+        }
+        body.innerHTML = html ? `<p class="muted small">Zdjęcia z GeoHints — stuknij, aby powiększyć.</p>${html}` : '<div class="empty">Brak zdjęć GeoHints dla tego kraju.</div>';
+        bindLightbox(body, lb);
+      }).catch(() => { body.innerHTML = '<div class="empty">Nie udało się wczytać galerii (sprawdź połączenie).</div>'; });
+      return;
+    }
+    const step = +ctab.slice(1);
+    loadJSON(`data/plonk/${id}.json`).then(d => {
+      if (location.hash !== '#kraj/' + id || ctab !== 'r' + step) return;
+      const items = d.items.filter(x => x[0] === step);
+      if (!items.length) { body.innerHTML = `<div class="empty">${step === 1 ? 'Brak kart ze zdjęciami — zobacz „Ściągę”.' : 'Plonk It nie ma tu wskazówek dla tego kraju.'}</div>`; return; }
+      let html = '', last = null, lb = [];
+      const open = () => '<div class="pgrid">';
+      for (const [, head, imgs, map, t] of items) {
+        if (head !== last) { if (last !== null) html += '</div>'; html += (head ? `<h3 class="phead">${esc(head)}</h3>` : '') + open(); last = head; }
+        const pics = imgs.map(p => { lb.push({ src: PLONK_IMG(p, 1200), cap: t, map }); return `<button class="pimg" data-lb="${lb.length - 1}"><img src="${esc(PLONK_IMG(p))}" alt="" loading="lazy" decoding="async"></button>`; }).join('');
+        html += `<div class="pcard ${imgs.length ? '' : 'noimg'}">${pics}${t || map ? `<div class="ptext">${txt(t)}${mapLink(map)}</div>` : ''}</div>`;
+      }
+      html += '</div>';
+      body.innerHTML = `<p class="muted small">${['', 'Jak rozpoznać kraj', 'Wskazówki regionalne', 'Spotlight — bardzo szczegółowe wskazówki'][step]} · na podstawie Plonk It · stuknij zdjęcie, aby powiększyć</p>` + html;
+      bindLightbox(body, lb);
+    }).catch(() => { body.innerHTML = '<div class="empty">Nie udało się wczytać danych (sprawdź połączenie).</div>'; });
+  }
+
+  // ── lightbox ──
+  const lbEl = document.createElement('div');
+  lbEl.className = 'lb hidden';
+  lbEl.innerHTML = `<button class="lb-x" aria-label="Zamknij">✕</button><button class="lb-nav lb-prev" aria-label="Poprzednie">‹</button>
+    <figure><img alt=""><figcaption></figcaption></figure><button class="lb-nav lb-next" aria-label="Następne">›</button>`;
+  document.body.appendChild(lbEl);
+  const lb = { list: [], i: 0 };
+  function lbShow() {
+    const it = lb.list[lb.i];
+    lbEl.querySelector('img').src = it.src;
+    lbEl.querySelector('figcaption').innerHTML = `<span class="lb-n">${lb.i + 1} / ${lb.list.length}</span> ${txt(it.cap || '')} ${mapLink(it.map)}`;
+  }
+  function bindLightbox(root, list) {
+    root.querySelectorAll('[data-lb]').forEach(b => b.onclick = () => { lb.list = list; lb.i = +b.dataset.lb; lbShow(); lbEl.classList.remove('hidden'); document.body.style.overflow = 'hidden'; });
+  }
+  const lbClose = () => { lbEl.classList.add('hidden'); lbEl.querySelector('img').src = ''; document.body.style.overflow = ''; };
+  const lbMove = d => { lb.i = (lb.i + d + lb.list.length) % lb.list.length; lbShow(); };
+  lbEl.querySelector('.lb-x').onclick = lbClose;
+  lbEl.querySelector('.lb-prev').onclick = e => { e.stopPropagation(); lbMove(-1); };
+  lbEl.querySelector('.lb-next').onclick = e => { e.stopPropagation(); lbMove(1); };
+  lbEl.addEventListener('click', e => { if (e.target === lbEl || e.target.tagName === 'FIGURE') lbClose(); });
+  let lx = null;
+  lbEl.addEventListener('touchstart', e => { lx = e.touches[0].clientX; }, { passive: true });
+  lbEl.addEventListener('touchend', e => { if (lx === null) return; const dx = e.changedTouches[0].clientX - lx; lx = null; if (Math.abs(dx) > 50) lbMove(dx < 0 ? 1 : -1); }, { passive: true });
+  addEventListener('hashchange', lbClose);
 
   // swipe między krajami na telefonie
   let sx = null, sy = null;
@@ -194,8 +288,12 @@
   // ═════════ PORÓWNAJ ═════════
   const cmpExtra = { drive: { label: 'Strona ruchu', short: 'Ruch', icon: '↔️' }, domain: { label: 'Domeny i kierunkowe', short: 'Domeny', icon: '🌐' } };
   const cmpCats = { ...CATS, ...cmpExtra };
-  let cmpCat = store.get('cmpCat', 'slupki'), cmpRegion = 'all';
+  let cmpCat = store.get('cmpCat', 'slupki'), cmpRegion = 'all', cmpMode = store.get('cmpMode', 'txt'), cmpGal = store.get('cmpGal', 'bollards');
+  const cmpOpen = new Set();
   function renderCompare() {
+    $('#compareMode').innerHTML = `<button class="seg ${cmpMode === 'txt' ? 'active' : ''}" data-cm="txt">📝 Opisy</button><button class="seg ${cmpMode === 'img' ? 'active' : ''}" data-cm="img">🖼️ Zdjęcia</button>`;
+    $$('[data-cm]').forEach(b => b.onclick = () => { cmpMode = b.dataset.cm; store.set('cmpMode', cmpMode); renderCompare(); });
+    if (cmpMode === 'img') return renderCompareImg();
     $('#compareChips').innerHTML = Object.entries(cmpCats).map(([k, v]) => `<button class="chip ${k === cmpCat ? 'active' : ''}" data-cmp="${k}">${v.icon} ${v.short}</button>`).join('');
     $('#compareRegions').innerHTML = ['all', ...REGIONS].map(r => `<button class="chip ${r === cmpRegion ? 'active' : ''}" data-cr="${r}">${r === 'all' ? 'Wszystkie regiony' : r}</button>`).join('');
     $$('[data-cmp]').forEach(b => b.onclick = () => { cmpCat = b.dataset.cmp; store.set('cmpCat', cmpCat); renderCompare(); });
@@ -213,6 +311,33 @@
       if (rows) html += `<h3 class="region-title">${r}</h3>${rows}`;
     }
     $('#compareList').innerHTML = html || '<div class="empty">Brak danych w tej kategorii.</div>';
+  }
+  function renderCompareImg() {
+    $('#compareChips').innerHTML = Object.entries(GAL).map(([k, [i, l]]) => `<button class="chip ${k === cmpGal ? 'active' : ''}" data-gal="${k}">${i} ${l}</button>`).join('');
+    $('#compareRegions').innerHTML = ['all', ...REGIONS].map(r => `<button class="chip ${r === cmpRegion ? 'active' : ''}" data-cr="${r}">${r === 'all' ? 'Wszystkie regiony' : r}</button>`).join('');
+    $$('[data-gal]').forEach(b => b.onclick = () => { cmpGal = b.dataset.gal; store.set('cmpGal', cmpGal); cmpOpen.clear(); renderCompare(); });
+    $$('[data-cr]').forEach(b => b.onclick = () => { cmpRegion = b.dataset.cr; renderCompare(); });
+    $('#compareList').innerHTML = '<div class="loading">Ładowanie zdjęć…</div>';
+    loadJSON('data/gallery.json').then(G => {
+      if (cmpMode !== 'img') return;
+      const all = G[cmpGal] || [], lbl = GAL[cmpGal][1], lbList = [];
+      let html = '';
+      for (const r of REGIONS) {
+        if (cmpRegion !== 'all' && r !== cmpRegion) continue;
+        const rows = C.filter(c => c.region === r).map(c => {
+          const it = all.filter(x => x[0] === c.id);
+          if (!it.length) return '';
+          const lim = cmpOpen.has(c.id) ? it.length : 6;
+          const thumbs = it.slice(0, lim).map(x => { lbList.push({ src: GH_IMG(x[1]), cap: `${c.name} · ${lbl}${x[3] ? ' · ' + x[3] : ''}`, map: x[2] }); return `<button class="gthumb" data-lb="${lbList.length - 1}"><img src="${esc(GH_IMG(x[1]))}" alt="" loading="lazy" decoding="async">${x[3] ? `<span>${esc(x[3])}</span>` : ''}</button>`; }).join('');
+          return `<div class="gcountry"><a class="gname" href="#kraj/${c.id}">${flag(c.id, 'sm')} ${esc(c.name)} <span>${it.length}</span></a><div class="ggrid">${thumbs}</div>${it.length > lim ? `<button class="link" data-more="${c.id}">Pokaż wszystkie (${it.length})</button>` : ''}</div>`;
+        }).join('');
+        if (rows) html += `<h3 class="region-title">${r}</h3>${rows}`;
+      }
+      const list = $('#compareList');
+      list.innerHTML = html ? `<p class="muted small" style="grid-column:1/-1">Zdjęcia z GeoHints — stuknij, aby powiększyć.</p>${html}` : '<div class="empty">Brak zdjęć dla tych filtrów.</div>';
+      bindLightbox(list, lbList);
+      list.querySelectorAll('[data-more]').forEach(b => b.onclick = () => { cmpOpen.add(b.dataset.more); renderCompareImg(); });
+    }).catch(() => { $('#compareList').innerHTML = '<div class="empty">Nie udało się wczytać zdjęć.</div>'; });
   }
 
   // ═════════ PORADNIKI ═════════
@@ -382,6 +507,10 @@
   // ── klawiatura ──
   document.addEventListener('keydown', e => {
     if (e.target.matches('input, select, textarea') || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (!lbEl.classList.contains('hidden')) {
+      if (e.key === 'Escape') lbClose(); else if (e.key === 'ArrowLeft') lbMove(-1); else if (e.key === 'ArrowRight') lbMove(1);
+      return;
+    }
     const v = (location.hash.slice(1) || 'kraje').split('/')[0];
     if (v === 'fiszki') {
       if (e.code === 'Space') { e.preventDefault(); fcFlip(); }

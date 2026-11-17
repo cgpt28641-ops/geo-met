@@ -1,5 +1,5 @@
 // Offline: najpierw sieć dla plików strony, cache jako zapas; flagi cache-first.
-const CACHE = 'geometa-v2';
+const CACHE = 'geometa-v3';
 const CORE = ['./', 'index.html', 'css/style.css', 'js/countries.js', 'js/guides.js', 'js/app.js', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', e => {

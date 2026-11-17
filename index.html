@@ -6,6 +6,7 @@
   <title>GeoMeta — meta GeoGuessr po polsku</title>
   <meta name="description" content="Cała meta do GeoGuessr w jednym miejscu, po polsku: ponad 120 krajów, porównania słupków, tablic i linii, poradniki, fiszki i quiz. Na telefon i komputer, także offline.">
   <meta name="theme-color" content="#0b1120">
+  <meta name="referrer" content="no-referrer">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon.svg">
@@ -55,7 +56,8 @@
     <!-- PORÓWNAJ -->
     <section id="v-porownaj" class="view">
       <h2 class="vtitle">Porównaj kraje</h2>
-      <p class="lead">Wybierz jedną rzecz — np. słupki — i zobacz ją we wszystkich krajach naraz. Najszybszy sposób, żeby wyłapać różnice.</p>
+      <p class="lead">Wybierz jedną rzecz — np. słupki — i zobacz ją we wszystkich krajach naraz: jako opisy albo zdjęcia. Najszybszy sposób, żeby wyłapać różnice.</p>
+      <div class="segs" id="compareMode"></div>
       <div class="chips wrap" id="compareChips"></div>
       <div class="chips" id="compareRegions"></div>
       <div id="compareList" class="compare"></div>

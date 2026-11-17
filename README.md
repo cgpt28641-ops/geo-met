@@ -3,21 +3,51 @@
 Strona do nauki mety GeoGuessr po polsku, wygodna na telefonie i komputerze.
 
 ## Co jest w środku
-- **Kraje** — 127 krajów i terytoriów (100 głównych) — ponad 2100 wskazówek: kamera Google, tablice, słupki, linie, znaki, język, słupy, przyroda, architektura. Wyszukiwarka (np. „snorkel”, „żółte”, „ř”), filtry regionu i strony ruchu, oznaczanie krajów jako opanowane.
-- **Porównaj** — jedna kategoria (np. słupki albo tablice) obok siebie dla wszystkich krajów.
-- **Poradniki** — plan rundy, ruch lewostronny, żółte linie, kolory tablic, ALTO/PARE, generacje kamer, cyrylica, litery łacinki, linki do Plonk It / GeoHints / geotips / LearnableMeta.
+- **Kraje** — 127 krajów i terytoriów (100 głównych) — ponad 2100 wskazówek: kamera Google, tablice, słupki, linie, znaki, język, słupy, przyroda, architektura. Każdy kraj ma zakładki: **Rozpoznanie**, **Regiony**, **Szczegóły** (karty ze zdjęciami z Plonk It, po polsku), **Ściąga** i **Galeria** (zdjęcia z GeoHints). Wyszukiwarka, filtry, oznaczanie krajów jako opanowane.
+- **Porównaj** — jedna kategoria obok siebie dla wszystkich krajów, jako opisy albo zdjęcia (16 galerii GeoHints: słupki, tablice, słupy, samochody Google i eskorty, szewrony, STOP, przejścia, drogowskazy…).
+- **Poradniki** — plan rundy, ruch lewostronny, żółte linie, kolory tablic, ALTO/PARE, generacje kamer, cyrylica, litery łacinki, słońce i cienie, poruszanie się, tryby rywalizacji.
 - **Fiszki** — system Leitnera (karty, których nie znasz, wracają częściej), swipe na telefonie, skróty klawiszowe (Spacja, 1, 2).
 - **Quiz** — wskazówka→kraj, flaga, strona ruchu, domena; rekordy i lista krajów do powtórki.
 - Tryb ciemny, działa offline (PWA — można „dodać do ekranu głównego”).
 
-## Uruchomienie
-Statyczna strona bez budowania — otwórz `index.html` albo:
+## Uruchomienie lokalne
+Statyczna strona bez budowania:
 ```bash
 python3 -m http.server
 ```
-**GitHub Pages:** Settings → Pages → Deploy from branch → wybierz gałąź i folder `/ (root)`.
+i otwórz http://localhost:8000 (karty ze zdjęciami ładują dane przez `fetch`, więc samo kliknięcie w `index.html` nie wystarczy).
+
+## Wdrożenie na Cloudflare Pages
+
+### Sposób 1 — przez GitHub (polecany, aktualizuje się sam po każdym pushu)
+1. Wejdź na https://dash.cloudflare.com → **Workers & Pages** → **Create** → zakładka **Pages** → **Connect to Git**.
+2. Połącz konto GitHub i wybierz repozytorium **geo-met**.
+3. Ustawienia buildu:
+   - **Production branch:** gałąź, na której jest strona (np. `main` po scaleniu albo `claude/busy-faraday-3taaef`),
+   - **Framework preset:** `None`,
+   - **Build command:** *(puste)*,
+   - **Build output directory:** `/` (katalog główny).
+4. **Save and Deploy** — po chwili strona działa pod adresem `https://<nazwa>.pages.dev`.
+5. (Opcjonalnie) **Custom domains** → podepnij własną domenę.
+
+### Sposób 2 — przeciągnij i upuść
+1. Pobierz repozytorium jako ZIP (GitHub → **Code** → **Download ZIP**) i rozpakuj.
+2. Cloudflare → **Workers & Pages** → **Create** → **Pages** → **Upload assets**.
+3. Nadaj nazwę projektu i przeciągnij rozpakowany folder → **Deploy site**.
+
+### Sposób 3 — z terminala
+```bash
+npx wrangler login
+npx wrangler pages deploy . --project-name geometa
+```
+(konfiguracja jest w `wrangler.toml`, nagłówki cache w `_headers`).
 
 ## Edycja treści
-Kraje: `js/countries.js` (opracowane po polsku z Plonk It + Geometas). Poradniki: `js/guides.js`.
+- `js/countries.js` — ściąga krajów (Plonk It + Geometas, po polsku) używana też w fiszkach i quizie,
+- `data/plonk/<kod>.json` — karty ze zdjęciami: rozpoznanie, regiony i szczegóły z Plonk It (po polsku),
+- `data/gallery.json` — galerie zdjęć z GeoHints (słupki, tablice, słupy, samochody, znaki…),
+- `js/guides.js` — poradniki.
+
+Zdjęcia są wczytywane bezpośrednio z serwerów Plonk It i GeoHints (strona do użytku własnego).
 
 Źródła: Plonk It, Geometas, GeoHints, blog „GeoGuessr – The Top Tips, Tricks and Techniques”. Google zmienia pokrycie, więc część wskazówek może się zestarzeć.
