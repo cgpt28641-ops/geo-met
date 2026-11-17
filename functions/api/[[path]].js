@@ -2,6 +2,7 @@
 // Wymaga w ustawieniach projektu Cloudflare Pages:
 //   • KV namespace binding:  GEOMETA_KV
 //   • Zmienne (jako „Secret”): ADMIN_USER, ADMIN_PASS, SESSION_SECRET, UPLOAD_TOKEN
+//   • Opcjonalnie: MAPILLARY_TOKEN (klucz klienta Mapillary do trybu „Prawdziwe ulice”)
 // Bez nich API zwraca 503, a reszta strony działa normalnie.
 
 const COOKIE = 'gm_sess';
@@ -61,6 +62,33 @@ const cookieHeader = (value, maxAge) =>
 export async function onRequest({ request, env, params }) {
   const path = '/' + [].concat(params.path || []).join('/');
   const method = request.method;
+
+  // ── publiczne: konfiguracja i wyzwanie dnia (bez logowania) ──
+  if (path === '/config') return json({ mapillary: env.MAPILLARY_TOKEN || null, ranking: !!env.GEOMETA_KV });
+  const daily = path.match(/^\/daily\/(\d{4}-\d{2}-\d{2})$/);
+  if (daily) {
+    if (!env.GEOMETA_KV) return json({ error: 'Ranking nie jest skonfigurowany (brak KV).' }, 503);
+    const day = daily[1], key = `daily:${day}`;
+    if (method === 'GET') return json({ wyniki: (await env.GEOMETA_KV.get(key, 'json')) || [] });
+    if (method === 'POST') {
+      // tylko dzisiejszy wynik (±1 dzień na strefy czasowe), jeden na nick
+      const now = Date.now(), d = Date.parse(day + 'T12:00:00Z');
+      if (!(Math.abs(now - d) < 40 * 3600e3)) return json({ error: 'To wyzwanie jest już zamknięte.' }, 400);
+      let body = {};
+      try { body = await request.json(); } catch { /* puste */ }
+      const nick = String(body.nick || '').replace(/[<>&"'`]/g, '').trim().slice(0, 20);
+      const score = Math.round(+body.score);
+      const rundy = Array.isArray(body.rundy) ? body.rundy.slice(0, 5).map(x => Math.max(0, Math.min(5000, Math.round(+x) || 0))) : [];
+      if (!nick || !(score >= 0 && score <= 25000) || rundy.reduce((a, b) => a + b, 0) !== score) return json({ error: 'Nieprawidłowy wynik.' }, 400);
+      const list = (await env.GEOMETA_KV.get(key, 'json')) || [];
+      if (list.some(x => x.nick.toLowerCase() === nick.toLowerCase())) return json({ error: 'Ten nick ma już dziś wynik — wybierz inny.' }, 409);
+      list.push({ nick, score, rundy, t: new Date().toISOString() });
+      list.sort((a, b) => b.score - a.score);
+      await env.GEOMETA_KV.put(key, JSON.stringify(list.slice(0, 500)), { expirationTtl: 60 * 864e2 });
+      return json({ ok: true, miejsce: list.findIndex(x => x.nick === nick) + 1, wyniki: list });
+    }
+  }
+
   if (!env.GEOMETA_KV || !env.ADMIN_USER || !env.ADMIN_PASS || !env.SESSION_SECRET) {
     return json({ error: 'Prywatna sekcja nie jest skonfigurowana (brak KV lub zmiennych w Cloudflare).' }, 503);
   }

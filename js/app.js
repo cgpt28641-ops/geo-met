@@ -49,21 +49,22 @@
     const h = location.hash.slice(1) || 'nauka';
     const [view, arg, ...rest] = h.split('/');
     if (currentRoute) scrollPos[currentRoute] = scrollY;
-    const tab = view === 'kraj' ? 'kraje' : ['lekcja', 'moje', 'gra'].includes(view) ? 'nauka' : view;
+    const tab = view === 'kraj' ? 'kraje' : ['lekcja', 'moje', 'gra', 'dzien'].includes(view) ? 'nauka' : view;
     if (view !== 'kraj') document.title = 'GeoMeta — meta GeoGuessr po polsku';
     $$('#tabs a').forEach(a => a.classList.toggle('active', a.dataset.tab === tab));
-    $$('.view').forEach(v => v.classList.toggle('active', v.id === 'v-' + view));
+    $$('.view').forEach(v => v.classList.toggle('active', v.id === 'v-' + (view === 'dzien' ? 'gra' : view)));
     if (view === 'kraj' && byId[arg]) renderCountry(arg);
     else if (view === 'kraj') return (location.hash = 'kraje');
     if (view === 'nauka') renderNauka();
     if (view === 'moje') renderMoje();
     if (view === 'gra') renderGra();
+    if (view === 'dzien') renderDzien();
     if (view === 'porownaj' && arg === 'vs') { cmpMode = 'vs'; if (byId[rest[0]]) vsA = rest[0]; vsB = byId[rest[1]] ? rest[1] : partnerOf(vsA, vsB); renderCompare(); }
     if (view === 'lekcja') { if (lessonById[arg]) renderLesson(arg); else return (location.hash = 'nauka'); }
     if (view === 'fiszki') fcNext();
     if (view === 'poradniki' && arg) { const d = document.getElementById('g-' + arg); if (d) { d.open = true; setTimeout(() => d.scrollIntoView({ block: 'start' }), 30); } }
     currentRoute = h;
-    if (!(view === 'poradniki' && arg)) requestAnimationFrame(() => scrollTo(0, ['kraj', 'lekcja', 'quiz', 'moje', 'gra'].includes(view) ? 0 : (scrollPos[h] || 0)));
+    if (!(view === 'poradniki' && arg)) requestAnimationFrame(() => scrollTo(0, ['kraj', 'lekcja', 'quiz', 'moje', 'gra', 'dzien'].includes(view) ? 0 : (scrollPos[h] || 0)));
     if (['nauka', 'kraje', 'porownaj', 'poradniki'].includes(view)) store.set('tab', view);
   }
   addEventListener('hashchange', route);
@@ -148,7 +149,7 @@
     if (deepIndex) return Promise.resolve(deepIndex);
     if (deepLoading) return deepLoading;
     let done = 0;
-    deepLoading = Promise.all(C.map(c => loadJSON(`data/plonk/${c.id}.json`).then(d => { onProgress && onProgress(++done); return d.items.map(it => ({ c, step: it[0], head: it[1], imgs: it[2], map: it[3], t: it[4], f: fold(it[4] + ' ' + it[1]) })); }).catch(() => [])))
+    deepLoading = Promise.all(C.map(c => loadJSON(`data/plonk/${c.id}.json`).then(d => { onProgress && onProgress(++done); return d.items.map((it, i) => ({ c, i, step: it[0], head: it[1], imgs: it[2], map: it[3], t: it[4], f: fold(it[4] + ' ' + it[1]) })); }).catch(() => [])))
       .then(arrs => (deepIndex = arrs.flat()));
     return deepLoading;
   }
@@ -473,7 +474,32 @@
     fc.only = null; fc.extra = false; store.set('fcSettings2', fcSet); fcNext();
   });
   const inScope = c => fc.only ? fc.only.includes(c.id) : (fcSet.region === 'all' || c.region === fcSet.region);
+  // fiszki ze zdjęć: Plonk It (rozpoznanie) + galerie GeoHints
+  const GAL_CAT = { bollards: 'slupki', licensePlates: 'tablice', utilityPoles: 'slupy', googleVehicles_cars: 'kamera', signs_chevrons: 'znaki', signs_stop: 'znaki', signs_yield: 'znaki', signs_pedestrian: 'znaki', signs_directions: 'znaki', signs_citySigns: 'znaki' };
+  let photoCards = null, photoLoading = null;
+  function buildPhotoCards() {
+    if (photoLoading) return photoLoading;
+    photoLoading = Promise.all([loadDeepIndex(), loadJSON('data/gallery.json').catch(() => ({}))]).then(([idx, G]) => {
+      const cards = [];
+      for (const x of idx) {
+        if (x.step !== 1 || !x.imgs.length || x.i === 0 || (x.t || '').length < 25 || x.c.minor) continue;
+        cards.push({ id: 'ph:' + x.imgs[0], c: x.c, k: null, img: PLONK_IMG(x.imgs[0], 900), cap: x.t, lab: 'Plonk It' });
+      }
+      for (const [g, k] of Object.entries(GAL_CAT)) {
+        const per = {};
+        for (const [code, img, , note] of G[g] || []) {
+          const c = byId[code]; if (!c || c.minor) continue;
+          per[code] = (per[code] || 0) + 1; if (per[code] > 4) continue;
+          cards.push({ id: 'gh:' + img, c, k, img: GH_IMG(img), cap: `${GAL[g][1]}${note ? ' · ' + note : ''}`, lab: GAL[g][1] });
+        }
+      }
+      photoCards = cards;
+    });
+    return photoLoading;
+  }
+
   function deck() {
+    if (fcSet.mode === 'photo') return photoCards ? photoCards.filter(x => inScope(x.c) && (fcSet.cat === 'all' || x.k === fcSet.cat)) : null;
     if (fcSet.mode === 'country') {
       return C.filter(c => !c.minor && inScope(c))
         .filter(c => fcSet.cat === 'all' || (c.clues[fcSet.cat] || []).length)
@@ -484,6 +510,12 @@
 
   function fcNext() {
     const d = deck();
+    if (d === null) {
+      fc.card = null; $('#flashcard').classList.remove('flipped');
+      $('#fcFront').innerHTML = '<div class="loading">Wczytuję zdjęcia do fiszek…</div>'; $('#fcBack').innerHTML = '';
+      buildPhotoCards().then(fcNext).catch(() => { $('#fcFront').innerHTML = '<div class="muted">Nie udało się wczytać zdjęć.</div>'; });
+      return;
+    }
     $('#flashcard').classList.remove('flipped'); fc.flipped = false;
     $('#flashcard').classList.remove('done');
     if (!d.length) { fc.card = null; $('#fcFront').innerHTML = '<div class="muted">Brak kart dla tych filtrów.</div>'; $('#fcBack').innerHTML = ''; renderFcStats(d); return; }
@@ -505,7 +537,10 @@
     fc.card = card; fc.last = [card.id, ...fc.last].slice(0, 6);
     const country = `${flag(card.c.id, fcSet.mode === 'clue' ? 'lg' : 'xl')}<div style="font-size:1.5rem;font-weight:800">${esc(card.c.name)}</div><div class="fc-hint">${card.c.region} · ruch ${driveTxt(card.c.drive)}</div>`;
     const badge = !srs[card.id] ? '<span class="fc-badge new">nowa</span>' : srs[card.id][0] === 0 ? '<span class="fc-badge bad">do poprawy</span>' : `<span class="fc-badge">powtórka · poziom ${srs[card.id][0]}</span>`;
-    if (fcSet.mode === 'clue') {
+    if (fcSet.mode === 'photo') {
+      $('#fcFront').innerHTML = `${badge}<div class="fc-cat">📸 ${esc(card.k ? CATS[card.k].label : 'Zdjęcie ze wskazówką')}</div><img class="fc-photo" src="${esc(card.img)}" alt="" onerror="this.replaceWith(document.createTextNode('(zdjęcie niedostępne)'))"><div class="fc-hint">Jaki to kraj? Stuknij, aby odwrócić</div>`;
+      $('#fcBack').innerHTML = `${flag(card.c.id, 'lg')}<div style="font-size:1.4rem;font-weight:800">${esc(card.c.name)}</div><div class="fc-cap">${txt(card.cap || '')}</div>`;
+    } else if (fcSet.mode === 'clue') {
       const lab = CATS[card.k];
       $('#fcFront').innerHTML = `${badge}<div class="fc-cat">${lab.icon} ${lab.label}</div><div>${esc(card.v)}</div><div class="fc-hint">Jaki to kraj? Pomyśl, potem stuknij, aby odwrócić</div>`;
       $('#fcBack').innerHTML = country + '<div class="qex fc-ex" id="fcEx"></div>';
@@ -805,6 +840,7 @@
         <a class="action big" href="#lekcja/${nextL.id}"><span class="ai">▶️</span><b>Kontynuuj ścieżkę</b><small>Lekcja: ${esc(nextL.title)} — ${nextL.countries.map(c => esc(c.name)).join(', ')}</small></a>
         <button class="action" id="goReview"><span class="ai">🔁</span><b>Powtórki na dziś</b><small>${dueCount ? dueCount + ' kart czeka' : 'brak zaległych — weź nowe karty'}</small></button>
         <a class="action big game" href="#gra"><span class="ai">🎮</span><b>Zagraj jak w GeoGuessr</b><small>5 zdjęć · zgaduj na mapie · do 25 000 pkt${store.get('graBest', null) != null ? ` · rekord ${store.get('graBest')}` : ''}</small></a>
+        <a class="action daily" href="#dzien"><span class="ai">📅</span><b>Wyzwanie dnia</b><small>${store.get('dailyDone', {})[dzisiaj()] ? `✅ dziś: ${fmt(store.get('dailyDone', {})[dzisiaj()].score)} pkt — zobacz ranking` : 'te same 5 zdjęć dla wszystkich · ranking znajomych'}</small></a>
         <button class="action" id="goPhoto"><span class="ai">📸</span><b>Zgadnij ze zdjęcia</b><small>10 zdjęć, 4 odpowiedzi</small></button>
         <button class="action" id="goMix"><span class="ai">🎲</span><b>Szybki quiz</b><small>10 mieszanych pytań</small></button>
         <button class="action" id="goMistakes" ${mistakes.length ? '' : 'disabled'}><span class="ai">❌</span><b>Moje błędy</b><small>${mistakes.length ? mistakes.length + ' do poprawy' : 'brak — tak trzymaj!'}</small></button>
@@ -846,51 +882,152 @@
     $('#lTest').onclick = () => { location.hash = 'quiz'; startQuiz({ pool: l.countries, n: 12, types: ['clue', 'clue', 'clue', 'photo', 'photo'], title: `Test: ${l.title}`, lesson: id }); };
   }
 
-  // ═════════ GRA: zdjęcie → kliknij na mapie (punkty jak w GeoGuessr) ═════════
-  const gra = { rounds: [], i: 0, total: 0, guess: null, answered: false, region: store.get('graRegion', 'all'), api: null };
-  const graScore = km => km <= 0 ? 5000 : Math.round(5000 * Math.exp(-km / 1492.7));
+  // ═════════ GRA: zgadywanie na mapie (punkty jak w GeoGuessr) ═════════
+  // tryby: 'foto' (zdjęcia wskazówek), 'ulice' (prawdziwe panoramy Mapillary), 'dzien' (wyzwanie dnia)
+  const gra = { rounds: [], i: 0, total: 0, guess: null, answered: false, mode: 'foto', src: store.get('graSrc', 'foto'), region: store.get('graRegion', 'all'), api: null, viewer: null };
+  const graScore = km => km <= 0.025 ? 5000 : Math.round(5000 * Math.exp(-km / 1492.7));
+  const fmt = n => n.toLocaleString('pl-PL');
+
+  // ── klucz Mapillary: lokalny (ustawienia) albo z Cloudflare (/api/config) ──
+  let mlyConfig = null;
+  async function mlyToken() {
+    const local = store.get('mlyToken', '');
+    if (local) return local;
+    if (!mlyConfig) mlyConfig = fetch('/api/config').then(r => r.ok ? r.json() : {}).catch(() => ({}));
+    return (await mlyConfig).mapillary || '';
+  }
+  let mlyLib = null;
+  function loadMapillary() {
+    if (mlyLib) return mlyLib;
+    mlyLib = new Promise((res, rej) => {
+      const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'js/vendor/mapillary.css'; document.head.appendChild(css);
+      const sc = document.createElement('script'); sc.src = 'js/vendor/mapillary.js'; sc.onload = () => res(window.mapillary); sc.onerror = rej; document.head.appendChild(sc);
+    });
+    return mlyLib;
+  }
+  function randomPointIn(world, code) {
+    const feats = world.byCode[code] || [];
+    if (!feats.length) return world.punkty[code] || null;
+    const f = pick(feats.length > 1 ? feats.sort((a, b) => d3.geoArea(b) - d3.geoArea(a)).slice(0, 2) : feats);
+    const [[x0, y0], [x1, y1]] = d3.geoBounds(f);
+    for (let t = 0; t < 60; t++) {
+      const lon = x0 <= x1 ? x0 + Math.random() * (x1 - x0) : x0 + Math.random() * (x1 + 360 - x0);
+      const p = [lon > 180 ? lon - 360 : lon, y0 + Math.random() * (y1 - y0)];
+      if (d3.geoContains(f, p)) return p;
+    }
+    return d3.geoCentroid(f);
+  }
+  async function findStreet(world, pool, token) {
+    const tryOne = async () => {
+      const c = pick(pool), p = randomPointIn(world, c.id);
+      if (!p) return null;
+      const r = 0.05, bbox = [p[0] - r, p[1] - r, p[0] + r, p[1] + r].map(v => v.toFixed(5)).join(',');
+      const res = await fetch(`https://graph.mapillary.com/images?access_token=${encodeURIComponent(token)}&fields=id,geometry,is_pano&bbox=${bbox}&limit=25`);
+      if (res.status === 401 || res.status === 403) throw new Error('Zły klucz Mapillary.');
+      if (!res.ok) return null;
+      const data = (await res.json()).data || [];
+      if (!data.length) return null;
+      const panos = data.filter(x => x.is_pano);
+      const img = pick(panos.length ? panos : data);
+      const ll = img.geometry.coordinates;
+      const real = world.features.find(f => f.properties.c && d3.geoContains(f, ll));
+      return { t: 'ulice', id: img.id, ll, c: real ? real.properties.c : c.id, pano: !!img.is_pano };
+    };
+    for (let batch = 0; batch < 8; batch++) {
+      const got = (await Promise.all([tryOne(), tryOne(), tryOne(), tryOne()])).filter(Boolean);
+      if (got.length) return got.find(g => g.pano) || got[0];
+    }
+    throw new Error('Nie udało się znaleźć zdjęć ulicznych — spróbuj jeszcze raz.');
+  }
+
   function renderGra() {
     const v = $('#v-gra');
-    if (!gra.rounds.length) {
-      v.innerHTML = `<a class="back" href="#nauka">← Nauka</a>
-        <div class="card setup"><h2>🎮 Zagraj jak w GeoGuessr</h2>
-          <p class="muted">Dostajesz zdjęcie z prawdziwej wskazówki (słupek, znak, tablica, krajobraz). Kliknij na mapie, gdzie to jest, i zatwierdź. Trafiony kraj = 5000 pkt, im dalej, tym mniej.</p>
-          <label>Region <select id="graRegion">${`<option value="all">Cały świat</option>` + REGIONS.map(r => `<option ${r === gra.region ? 'selected' : ''}>${r}</option>`).join('')}</select></label>
-          <button class="btn primary big" id="graStart">Start — 5 rund ➜</button>
-          <p class="muted small">${store.get('graBest', null) != null ? `🏆 Twój rekord: ${store.get('graBest')} / 25 000` : 'Map do przybliżania: kółko myszy, dwa palce albo przyciski +/−.'}</p></div>`;
-      $('#graRegion').onchange = e => { gra.region = e.target.value; store.set('graRegion', gra.region); };
-      $('#graStart').onclick = startGra;
-      return;
-    }
-    renderGraRound();
+    if (gra.rounds.length && gra.mode !== 'dzien') return renderGraRound();
+    gra.rounds = [];
+    v.innerHTML = `<a class="back" href="#nauka">← Nauka</a>
+      <div class="card setup"><h2>🎮 Zagraj jak w GeoGuessr</h2>
+        <div class="segs" id="graSrc"><button class="seg ${gra.src === 'foto' ? 'active' : ''}" data-src="foto">📸 Zdjęcia wskazówek</button><button class="seg ${gra.src === 'ulice' ? 'active' : ''}" data-src="ulice">🌐 Prawdziwe ulice</button></div>
+        <p class="muted" id="graDesc"></p>
+        <div id="graMly"></div>
+        <label>Region <select id="graRegion">${`<option value="all">Cały świat</option>` + REGIONS.map(r => `<option ${r === gra.region ? 'selected' : ''}>${r}</option>`).join('')}</select></label>
+        <button class="btn primary big" id="graStart">Start — 5 rund ➜</button>
+        <p class="muted small">${store.get('graBest', null) != null ? `🏆 Rekord (zdjęcia): ${fmt(store.get('graBest'))} · ` : ''}${store.get('graBestU', null) != null ? `🏆 Rekord (ulice): ${fmt(store.get('graBestU'))} · ` : ''}Mapę przybliżasz kółkiem myszy, dwoma palcami albo przyciskami +/−.</p>
+        <a class="btn" href="#dzien">📅 Wyzwanie dnia ze znajomymi</a></div>`;
+    const desc = () => {
+      $('#graDesc').textContent = gra.src === 'foto'
+        ? 'Dostajesz zdjęcie prawdziwej wskazówki (słupek, znak, tablica, krajobraz). Trafiony kraj = 5000 pkt, im dalej od granicy, tym mniej.'
+        : 'Prawdziwe zdjęcia uliczne (często 360°) z losowego miejsca — rozglądaj się, chodź po drodze strzałkami. Punkty liczone od dokładnego miejsca, jak w GeoGuessr.';
+      mlyToken().then(tok => {
+        const box = $('#graMly'); if (!box) return;
+        box.innerHTML = gra.src === 'ulice' && !tok ? `<div class="tip small">🔑 Ten tryb potrzebuje darmowego klucza Mapillary. Załóż konto na mapillary.com → Developers → „Register application” → skopiuj <b>Client Token</b> (zaczyna się od MLY|) i wklej poniżej (zapisze się tylko na tym urządzeniu) albo dodaj go w Cloudflare jako MAPILLARY_TOKEN — wtedy zadziała u wszystkich znajomych.</div>
+          <label>Klucz Mapillary <input id="mlyTok" placeholder="MLY|…"></label>` : '';
+        const inp = $('#mlyTok'); if (inp) inp.onchange = () => { store.set('mlyToken', inp.value.trim()); };
+      });
+    };
+    desc();
+    $$('[data-src]').forEach(b => b.onclick = () => { gra.src = b.dataset.src; store.set('graSrc', gra.src); $$('[data-src]').forEach(x => x.classList.toggle('active', x === b)); desc(); });
+    $('#graRegion').onchange = e => { gra.region = e.target.value; store.set('graRegion', gra.region); };
+    $('#graStart').onclick = () => startGra(gra.src);
   }
-  async function startGra() {
+
+  async function photoRounds(pool, n, rnd = Math.random) {
+    const P = {};
+    const order = [...pool].sort((a, b) => a.id < b.id ? -1 : 1);
+    const chosen = [];
+    while (chosen.length < Math.min(n * 2, order.length)) { const c = order[Math.floor(rnd() * order.length)]; if (!chosen.includes(c)) chosen.push(c); }
+    await Promise.all(chosen.map(c => loadJSON(`data/plonk/${c.id}.json`).then(d => { P[c.id] = d; }).catch(() => {})));
+    const rounds = [];
+    for (const c of chosen) {
+      const d = P[c.id]; if (!d || rounds.length >= n) continue;
+      const items = d.items.filter((it, i) => it[0] === 1 && it[2].length && (it[4] || '').length > 25 && i > 0);
+      if (!items.length) continue;
+      const it = items[Math.floor(rnd() * items.length)];
+      rounds.push({ t: 'photo', c: c.id, img: PLONK_IMG(it[2][Math.floor(rnd() * it[2].length)], 900), cap: it[4], map: it[3] });
+    }
+    return rounds;
+  }
+
+  async function startGra(src, preset = null) {
     const v = $('#v-gra');
-    v.innerHTML = '<div class="loading">Losuję zdjęcia…</div>';
+    v.innerHTML = `<div class="loading">${src === 'ulice' ? 'Szukam miejsca na świecie…' : 'Losuję zdjęcia…'}</div>`;
     const pool = C.filter(c => !c.minor && (gra.region === 'all' || c.region === gra.region));
-    const need = shuffle(pool).slice(0, 12), P = {};
-    await Promise.all(need.map(c => loadJSON(`data/plonk/${c.id}.json`).then(d => { P[c.id] = d; }).catch(() => {})));
-    const G = await loadJSON('data/gallery.json').catch(() => null);
-    const used = new Set(), rounds = [];
-    for (let i = 0; i < 40 && rounds.length < 5; i++) {
-      const sp = makeSpec('photo', need, 'all', P, G);
-      if (sp.t !== 'photo' || used.has(sp.c)) continue;
-      used.add(sp.c); rounds.push(sp);
-    }
-    Object.assign(gra, { rounds, i: 0, total: 0, guess: null, answered: false, results: [] });
-    if (!rounds.length) { v.innerHTML = '<div class="empty">Nie udało się wczytać zdjęć. Sprawdź połączenie.</div>'; gra.rounds = []; return; }
+    Object.assign(gra, { mode: preset ? 'dzien' : src, i: 0, total: 0, results: [], rounds: [] });
+    try {
+      if (preset) gra.rounds = preset;
+      else if (src === 'ulice') {
+        const token = await mlyToken();
+        if (!token) { renderGra(); return; }
+        gra.token = token; gra.pool = pool;
+        const world = await GMMap.load(); gra.world = world;
+        gra.rounds = [await findStreet(world, pool, token)];
+        gra.next = findStreet(world, pool, token).catch(() => null);
+      } else {
+        const G = await loadJSON('data/gallery.json').catch(() => null);
+        gra.rounds = (await photoRounds(shuffle(pool).slice(0, 12), 5));
+        // czasem zdjęcie z galerii GeoHints zamiast Plonk It
+        if (G) gra.rounds = gra.rounds.map(r => { if (Math.random() >= 0.3) return r; const g = makeSpec('photo', [byId[r.c]], 'all', {}, G); return g.t === 'photo' ? g : r; });
+      }
+    } catch (e) { v.innerHTML = `<a class="back" href="#gra">← Wróć</a><div class="empty">${esc(e.message || 'Nie udało się przygotować gry.')}</div>`; gra.rounds = []; return; }
+    if (!gra.rounds.length) { v.innerHTML = '<div class="empty">Nie udało się wczytać zdjęć. Sprawdź połączenie.</div>'; return; }
     renderGraRound();
   }
+  const graCount = () => gra.mode === 'ulice' ? 5 : gra.rounds.length;
+
   function renderGraRound() {
-    const v = $('#v-gra'), sp = gra.rounds[gra.i];
+    const v = $('#v-gra'), sp = gra.rounds[gra.i], street = sp.t === 'ulice';
     gra.guess = null; gra.answered = false;
-    v.innerHTML = `<div class="gra-head"><a class="back" href="#nauka" id="graQuit">✕</a><b>Runda ${gra.i + 1} / ${gra.rounds.length}</b><span>⭐ ${gra.total.toLocaleString('pl-PL')} pkt</span></div>
-      <div class="gra-wrap">
-        <div class="gra-photo">${sp.lab ? `<div class="fc-cat">📸 ${esc(sp.lab)}</div>` : ''}<button class="qphoto" data-lb="0"><img src="${esc(sp.img)}" alt=""></button><p class="muted small">Stuknij zdjęcie, aby powiększyć.</p></div>
+    if (gra.viewer) { try { gra.viewer.remove(); } catch { /* */ } gra.viewer = null; }
+    v.innerHTML = `<div class="gra-head"><a class="back" href="#nauka" id="graQuit">✕</a><b>${gra.mode === 'dzien' ? '📅 Wyzwanie dnia · ' : ''}Runda ${gra.i + 1} / ${graCount()}</b><span>⭐ ${fmt(gra.total)} pkt</span></div>
+      <div class="gra-wrap ${street ? 'street' : ''}">
+        ${street ? '<div class="gra-photo gra-street"><div id="mly"></div></div>'
+          : `<div class="gra-photo">${sp.lab ? `<div class="fc-cat">📸 ${esc(sp.lab)}</div>` : ''}<button class="qphoto" data-lb="0"><img src="${esc(sp.img)}" alt=""></button><p class="muted small">Stuknij zdjęcie, aby powiększyć.</p></div>`}
         <div class="gra-mapcol"><div id="graMap"><div class="loading">Ładowanie mapy…</div></div>
           <button class="btn primary big" id="graGo" disabled>📍 Postaw pinezkę na mapie</button><div id="graRes"></div></div>
       </div>`;
-    bindLightbox(v.querySelector('.gra-photo'), [{ src: sp.img, cap: '' }]);
+    if (!street) bindLightbox(v.querySelector('.gra-photo'), [{ src: sp.img, cap: '' }]);
+    else loadMapillary().then(m => {
+      gra.viewer = new m.Viewer({ accessToken: gra.token, container: 'mly', imageId: sp.id, component: { cover: false } });
+    }).catch(() => { $('#mly').innerHTML = '<div class="empty">Nie udało się wczytać przeglądarki zdjęć.</div>'; });
     $('#graQuit').onclick = e => { e.preventDefault(); if (confirm('Przerwać grę?')) { gra.rounds = []; location.hash = 'nauka'; } };
     GMMap.load().then(world => {
       gra.world = world;
@@ -905,38 +1042,121 @@
       $('#graGo').onclick = () => gra.answered ? nextGraRound() : answerGra();
     }).catch(() => { $('#graMap').innerHTML = '<div class="empty">Nie udało się wczytać mapy.</div>'; });
   }
+
   function answerGra() {
     if (!gra.guess || gra.answered) return;
     gra.answered = true; logActivity();
-    const sp = gra.rounds[gra.i], c = byId[sp.c];
-    const km = GMMap.distanceKm(gra.world, sp.c, gra.guess), pts = graScore(km);
-    gra.total += pts; gra.results.push({ c, pts, km });
-    const center = GMMap.centerOf(gra.world, sp.c);
-    gra.api.highlight(sp.c, 'hl-good');
-    if (km > 0 && center) { gra.api.line(gra.guess, center); gra.api.setMarker(center, 'answer'); gra.api.zoomTo([gra.guess, center]); }
-    else if (center) gra.api.zoomTo([center]);
-    if (km > 0 && !mistakes.some(m => specKey(m) === specKey(sp))) { mistakes = [sp, ...mistakes].slice(0, 200); store.set('mistakes', mistakes); }
-    $('.gra-head span').textContent = `⭐ ${gra.total.toLocaleString('pl-PL')} pkt`;
-    $('#graRes').innerHTML = `<div class="gra-result ${km > 0 ? 'bad' : 'good'}">
-        <div class="gra-pts">${pts.toLocaleString('pl-PL')} <small>pkt</small></div>
-        <div>${km > 0 ? `❌ To był(a) <b>${flag(c.id, 'sm')} ${esc(c.name)}</b> — pinezka ${Math.round(km).toLocaleString('pl-PL')} km od granicy` : `✅ Trafiony kraj: <b>${flag(c.id, 'sm')} ${esc(c.name)}</b>`}</div>
-      </div>
+    const sp = gra.rounds[gra.i], c = byId[sp.c], street = sp.t === 'ulice';
+    const km = street ? d3.geoDistance(gra.guess, sp.ll) * 6371 : GMMap.distanceKm(gra.world, sp.c, gra.guess);
+    const pts = graScore(km), inCountry = street ? GMMap.distanceKm(gra.world, sp.c, gra.guess) === 0 : km === 0;
+    gra.total += pts; gra.results.push({ c, pts, km, inCountry });
+    const target = street ? sp.ll : GMMap.centerOf(gra.world, sp.c);
+    if (c) gra.api.highlight(sp.c, 'hl-good');
+    if (target && (km > 0.025)) { gra.api.line(gra.guess, target); gra.api.setMarker(target, 'answer'); gra.api.zoomTo([gra.guess, target]); }
+    else if (target) gra.api.zoomTo([target]);
+    if (!street && !inCountry && !mistakes.some(m => specKey(m) === specKey(sp))) { mistakes = [sp, ...mistakes].slice(0, 200); store.set('mistakes', mistakes); }
+    $('.gra-head span').textContent = `⭐ ${fmt(gra.total)} pkt`;
+    const name = c ? `${flag(c.id, 'sm')} ${esc(c.name)}` : esc(sp.c.toUpperCase());
+    const msg = street
+      ? `${inCountry ? '✅ Dobry kraj!' : '❌'} To był(a) <b>${name}</b> — ${fmt(Math.round(km))} km od Twojej pinezki`
+      : km > 0 ? `❌ To był(a) <b>${name}</b> — pinezka ${fmt(Math.round(km))} km od granicy` : `✅ Trafiony kraj: <b>${name}</b>`;
+    $('#graRes').innerHTML = `<div class="gra-result ${inCountry ? 'good' : 'bad'}"><div class="gra-pts">${fmt(pts)} <small>pkt</small></div><div>${msg}</div></div>
       ${sp.cap ? `<div class="qex-cap">${txt(sp.cap)}${mapLink(sp.map)}</div>` : ''}
-      <p class="muted small"><a href="#kraj/${c.id}">Otwórz kartę kraju →</a></p>`;
-    const b = $('#graGo'); b.textContent = gra.i + 1 < gra.rounds.length ? 'Następna runda ➜' : 'Zobacz wynik 🏁';
+      ${street && c ? `<div class="qex-cap"><b>Po czym rozpoznać ${esc(c.name)}?</b> ${esc(c.summary)}</div>` : ''}
+      <p class="muted small">${c ? `<a href="#kraj/${c.id}">Otwórz kartę kraju →</a>` : ''}${street ? ` · <a href="https://www.google.com/maps/@?api=1&map_action=map&center=${sp.ll[1]},${sp.ll[0]}&zoom=12" target="_blank" rel="noopener">Pokaż miejsce w Google Maps ↗</a>` : ''}</p>`;
+    $('#graGo').textContent = gra.i + 1 < graCount() ? 'Następna runda ➜' : 'Zobacz wynik 🏁';
   }
-  function nextGraRound() {
+
+  async function nextGraRound() {
     gra.i++;
-    if (gra.i < gra.rounds.length) return renderGraRound();
-    const best = store.get('graBest', null), record = best == null || gra.total > best;
-    if (record) store.set('graBest', gra.total);
-    $('#v-gra').innerHTML = `<div class="card result"><div class="score">${gra.total.toLocaleString('pl-PL')}</div><div>na 25 000 pkt ${record ? '· 🏆 Nowy rekord!' : `· rekord ${best.toLocaleString('pl-PL')}`}</div>
-      <div class="gra-sum">${gra.results.map((r, i) => `<a href="#kraj/${r.c.id}">${i + 1}. ${flag(r.c.id, 'sm')} ${esc(r.c.name)} <b>${r.pts.toLocaleString('pl-PL')}</b>${r.km > 0 ? ` <small>(${Math.round(r.km)} km)</small>` : ' ✅'}</a>`).join('')}</div>
-      <p class="muted small">Pomylone zdjęcia trafiły do „Moje błędy”.</p>
-      <p class="result-actions"><button class="btn primary" id="graAgain">Zagraj jeszcze raz</button><a class="btn" href="#nauka">🎓 Nauka</a></p></div>`;
-    gra.rounds = [];
-    $('#graAgain').onclick = startGra;
+    if (gra.i < graCount()) {
+      if (gra.mode === 'ulice' && !gra.rounds[gra.i]) {
+        $('#graGo').disabled = true; $('#graGo').textContent = 'Szukam kolejnego miejsca…';
+        let loc = await gra.next;
+        if (!loc) loc = await findStreet(gra.world, gra.pool, gra.token).catch(() => null);
+        if (!loc) { $('#graGo').textContent = 'Nie znalazłem miejsca — spróbuj ponownie'; $('#graGo').disabled = false; gra.i--; return; }
+        gra.rounds[gra.i] = loc;
+        if (gra.i + 1 < 5) gra.next = findStreet(gra.world, gra.pool, gra.token).catch(() => null);
+      }
+      return renderGraRound();
+    }
+    if (gra.viewer) { try { gra.viewer.remove(); } catch { /* */ } gra.viewer = null; }
+    if (gra.mode === 'dzien') return renderDzienKoniec();
+    const key = gra.mode === 'ulice' ? 'graBestU' : 'graBest';
+    const best = store.get(key, null), record = best == null || gra.total > best;
+    if (record) store.set(key, gra.total);
+    $('#v-gra').innerHTML = `<div class="card result"><div class="score">${fmt(gra.total)}</div><div>na 25 000 pkt ${record ? '· 🏆 Nowy rekord!' : `· rekord ${fmt(best)}`}</div>
+      ${graSummary()}
+      ${gra.mode === 'foto' ? '<p class="muted small">Pomylone zdjęcia trafiły do „Moje błędy”.</p>' : ''}
+      <p class="result-actions"><button class="btn primary" id="graAgain">Zagraj jeszcze raz</button><a class="btn" href="#dzien">📅 Wyzwanie dnia</a><a class="btn" href="#nauka">🎓 Nauka</a></p></div>`;
+    const mode = gra.mode; gra.rounds = [];
+    $('#graAgain').onclick = () => startGra(mode);
   }
+  const graSummary = () => `<div class="gra-sum">${gra.results.map((r, i) => `<a href="${r.c ? '#kraj/' + r.c.id : '#gra'}">${i + 1}. ${r.c ? flag(r.c.id, 'sm') + ' ' + esc(r.c.name) : '?'} <b>${fmt(r.pts)}</b>${r.inCountry ? ' ✅' : ` <small>(${fmt(Math.round(r.km))} km)</small>`}</a>`).join('')}</div>`;
+
+  // ═════════ WYZWANIE DNIA (te same 5 zdjęć dla wszystkich, ranking znajomych) ═════════
+  const dzisiaj = (offset = 0) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Warsaw' }).format(new Date(Date.now() + offset * 864e5));
+  function seeded(str) {
+    let h = 1779033703 ^ str.length;
+    for (let i = 0; i < str.length; i++) { h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = h << 13 | h >>> 19; }
+    let a = h >>> 0;
+    return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  }
+  const emojiPts = p => p >= 4000 ? '🟩' : p >= 2000 ? '🟨' : p >= 500 ? '🟧' : '🟥';
+  const dateLabel = d => new Date(d + 'T12:00:00').toLocaleDateString('pl-PL', { day: 'numeric', month: 'long' });
+
+  function rankingHtml(list, me) {
+    if (!list.length) return '<div class="empty small">Jeszcze nikt nie zagrał — bądź pierwszy!</div>';
+    return `<table class="rank"><tr><th>#</th><th>Nick</th><th>Rundy</th><th>Pkt</th></tr>${list.slice(0, 50).map((r, i) => `<tr class="${me && r.nick.toLowerCase() === me.toLowerCase() ? 'me' : ''}"><td>${['🥇', '🥈', '🥉'][i] || i + 1}</td><td>${esc(r.nick)}</td><td>${(r.rundy || []).map(emojiPts).join('')}</td><td><b>${fmt(r.score)}</b></td></tr>`).join('')}</table>`;
+  }
+  function loadRanking(day, el) {
+    el.innerHTML = '<div class="loading">Wczytuję ranking…</div>';
+    fetch('/api/daily/' + day).then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(d => { el.innerHTML = rankingHtml(d.wyniki || [], store.get('nick', '')); })
+      .catch(() => { el.innerHTML = '<p class="muted small">Ranking działa na stronie wdrożonej na Cloudflare z bazą KV (instrukcja w README). Twój wynik i tak zapisuje się na tym urządzeniu.</p>'; });
+  }
+  function renderDzien() {
+    const v = $('#v-gra');
+    const day = dzisiaj(), done = store.get('dailyDone', {})[day];
+    v.innerHTML = `<a class="back" href="#nauka">← Nauka</a>
+      <div class="card setup daily"><h2>📅 Wyzwanie dnia · ${dateLabel(day)}</h2>
+        <p class="muted">Dziś wszyscy grają te same 5 zdjęć. Masz jedno podejście — porównaj wynik ze znajomymi!</p>
+        ${done ? `<div class="daily-done"><div class="score">${fmt(done.score)}</div><div>${done.rundy.map(emojiPts).join(' ')}</div><button class="btn" id="dzShare">📋 Kopiuj wynik do wysłania</button></div>`
+          : `<label>Twój nick (widoczny w rankingu) <input id="dzNick" maxlength="20" value="${esc(store.get('nick', ''))}" placeholder="np. Kuba"></label><button class="btn primary big" id="dzStart">Zagraj dzisiejsze wyzwanie ➜</button>`}
+        <div class="segs"><button class="seg active" data-day="0">Dziś</button><button class="seg" data-day="-1">Wczoraj</button></div>
+        <div id="dzRank"></div></div>`;
+    loadRanking(day, $('#dzRank'));
+    $$('[data-day]').forEach(b => b.onclick = () => { $$('[data-day]').forEach(x => x.classList.toggle('active', x === b)); loadRanking(dzisiaj(+b.dataset.day), $('#dzRank')); });
+    if (done) $('#dzShare').onclick = () => shareDaily(day, done);
+    else $('#dzStart').onclick = async () => {
+      const nick = $('#dzNick').value.trim();
+      if (!nick) { $('#dzNick').focus(); return; }
+      store.set('nick', nick);
+      v.innerHTML = '<div class="loading">Przygotowuję dzisiejsze zdjęcia…</div>';
+      const rounds = await photoRounds(C.filter(c => !c.minor && c.diff <= 2), 5, seeded('geometa-' + day));
+      gra.dzien = day;
+      startGra('foto', rounds);
+    };
+  }
+  function shareDaily(day, done) {
+    const text = `🌍 GeoMeta · wyzwanie ${dateLabel(day)}\n${fmt(done.score)} / 25 000 pkt\n${done.rundy.map(emojiPts).join('')}\n${location.origin}${location.pathname}#dzien`;
+    (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(() => alert('Skopiowano! Wklej znajomym 🙂'), () => prompt('Skopiuj wynik:', text));
+  }
+  function renderDzienKoniec() {
+    const day = gra.dzien, rundy = gra.results.map(r => r.pts), score = gra.total;
+    const all = store.get('dailyDone', {}); all[day] = { score, rundy }; store.set('dailyDone', all);
+    $('#v-gra').innerHTML = `<div class="card result"><h2>📅 Wyzwanie ${dateLabel(day)}</h2><div class="score">${fmt(score)}</div><div class="daily-emoji">${rundy.map(emojiPts).join(' ')}</div>
+      ${graSummary()}
+      <p class="result-actions"><button class="btn primary" id="dzShare">📋 Kopiuj wynik do wysłania</button><a class="btn" href="#nauka">🎓 Nauka</a></p>
+      <h3>Ranking dnia</h3><div id="dzRank"><div class="loading">Zapisuję wynik…</div></div></div>`;
+    gra.rounds = [];
+    $('#dzShare').onclick = () => shareDaily(day, { score, rundy });
+    fetch('/api/daily/' + day, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nick: store.get('nick', 'Gracz'), score, rundy }) })
+      .then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || r.status); return d; })
+      .then(d => { $('#dzRank').innerHTML = `<p>Jesteś <b>${d.miejsce}.</b> dzisiaj!</p>` + rankingHtml(d.wyniki, store.get('nick', '')); })
+      .catch(e => { $('#dzRank').innerHTML = `<p class="muted small">${/^\d+$/.test(e.message) || e.message === 'Failed to fetch' ? 'Ranking działa na stronie wdrożonej na Cloudflare z bazą KV.' : esc(e.message)}</p>`; loadRankingLater(day); });
+  }
+  const loadRankingLater = day => { const el = document.createElement('div'); $('#dzRank').appendChild(el); loadRanking(day, el); };
 
   // ═════════ MOJE (prywatne, za logowaniem) ═════════
   const api = (path, opts = {}) => fetch('/api' + path, { credentials: 'same-origin', headers: { 'content-type': 'application/json' }, ...opts })
