@@ -285,8 +285,14 @@ class Asystent:
                     except Exception as e:
                         info += f" · ☁ nie wysłano ({e})"
                 czesci = [(("✅ " if ok else "❌ ") + lekcja["poprawny_kraj"] + "\n\n", "akc"), (lekcja["lekcja"] + "\n", "")]
+                if lekcja["widziane"]:
+                    czesci += [("\nModel zauważył na zrzutach (sprawdź sam):\n", "b")] + [(f" • {w['widac']} ({w['pewnosc']}%) → {w['regula']}\n", "") for w in lekcja["widziane"]]
                 if lekcja["przeoczone"]:
-                    czesci += [("\nPo czym poznać ten kraj:\n", "b")] + [(f" • {x}\n", "") for x in lekcja["przeoczone"]]
+                    czesci += [("\nZłote wskazówki:\n", "b")] + [(f" • {x}\n", "") for x in lekcja["przeoczone"]]
+                if lekcja["roznice"]:
+                    czesci += [(f"\nJak odróżnić od: {lekcja['pomylony']}\n", "b")] + [(f" • {x}\n", "") for x in lekcja["roznice"]]
+                for kat, lst in lekcja["wskazowki"].items():
+                    czesci += [(f"\n{kat}\n", "b")] + [(f" • {x}\n", "") for x in lst]
                 czesci.append(("\n" + info, "szary"))
                 self.kolejka.put(("pisz", czesci))
             self._w_tle(praca)
