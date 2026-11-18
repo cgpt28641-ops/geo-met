@@ -123,15 +123,15 @@ def sprawdz_reguly(obrazy: list, prog: float = 0.8) -> list[dict]:
     return wynik
 
 
-def _reguly_krajow():
+def _reguly_krajow(plik_danych: str = "reguly.json", klucz: str = "rk"):
     """Reguły rozpoznawania z GeoMeta (Plonk It) jako opisy dla modelu; liczone raz i zapisywane na dysku."""
-    if "rk" in _stan:
-        return _stan["rk"]
+    if klucz in _stan:
+        return _stan[klucz]
     _zaladuj()
     torch, model, proc = _stan["torch"], _stan["model"], _stan["proc"]
-    dane = json.loads((silnik.katalog_zasobow() / "reguly.json").read_text(encoding="utf-8"))
+    dane = json.loads((silnik.katalog_zasobow() / plik_danych).read_text(encoding="utf-8"))
     wpisy = [(kod, en, pl) for kod, lst in dane.items() for en, pl in lst]
-    plik = silnik.katalog_aplikacji() / f"reguly-{len(wpisy)}.pt"
+    plik = silnik.katalog_aplikacji() / f"{klucz}-{len(wpisy)}.pt"
     emb = None
     if plik.exists():
         try:
@@ -150,13 +150,13 @@ def _reguly_krajow():
             torch.save(emb.cpu(), plik)
         except Exception:
             pass
-    _stan["rk"] = (wpisy, emb.to(_stan["urz"]))
-    return _stan["rk"]
+    _stan[klucz] = (wpisy, emb.to(_stan["urz"]))
+    return _stan[klucz]
 
 
-def pasujace_reguly(obrazy: list, kod: str, ile: int = 3) -> list[str]:
-    """Reguły danego kraju, które najlepiej pasują do zrzutów (po polsku)."""
-    wpisy, emb = _reguly_krajow()
+def pasujace_reguly(obrazy: list, kod: str, ile: int = 3, regionalne: bool = False) -> list[str]:
+    """Reguły danego kraju (albo jego regionów), które najlepiej pasują do zrzutów (po polsku)."""
+    wpisy, emb = _reguly_krajow("reguly_regiony.json", "rr") if regionalne else _reguly_krajow()
     idx = [i for i, w in enumerate(wpisy) if w[0] == kod]
     if not idx or not obrazy:
         return []
@@ -169,6 +169,30 @@ def pasujace_reguly(obrazy: list, kod: str, ile: int = 3) -> list[str]:
             suma = suma + (o / o.norm(dim=-1, keepdim=True)) @ emb[idx].T
         top = suma[0].topk(min(ile, len(idx))).indices.tolist()
     return [wpisy[idx[i]][2] for i in top]
+
+
+def typuj_region(obrazy: list, kod: str, ile: int = 3) -> list[dict]:
+    """Najbardziej prawdopodobne regiony (województwa, stany, prowincje) w danym kraju."""
+    if "regiony" not in _stan:
+        _stan["regiony"] = json.loads((silnik.katalog_zasobow() / "regiony.json").read_text(encoding="utf-8"))
+    lista, k = _stan["regiony"].get(kod), kraj(kod)
+    if not lista or not k or not obrazy:
+        return []
+    _zaladuj()
+    torch, model, proc = _stan["torch"], _stan["model"], _stan["proc"]
+    with torch.no_grad():
+        wej = proc(text=[f"A Street View photo in {r[0]}, {k['en']}." for r in lista], return_tensors="pt", padding=True, truncation=True, max_length=77).to(_stan["urz"])
+        t = model.text_projection(model.text_model(**wej).pooler_output)
+        t = t / t.norm(dim=-1, keepdim=True)
+        suma = 0
+        for img in obrazy:
+            w, h = img.size
+            wej = proc(images=img.convert("RGB").crop((0, int(h * 0.06), w, int(h * 0.88))), return_tensors="pt").to(_stan["urz"])
+            o = model.visual_projection(model.vision_model(**wej).pooler_output)
+            suma = suma + (100 * (o / o.norm(dim=-1, keepdim=True)) @ t.T).softmax(-1)[0]
+        p = (suma / len(obrazy)).cpu()
+    top = p.topk(min(ile, len(lista)))
+    return [{"region": lista[i][1], "pewnosc": round(float(v) * 100), "lat": lista[i][2], "lon": lista[i][3]} for v, i in zip(top.values, top.indices)]
 
 
 def roznice(a: dict, b: dict, ile: int = 4) -> list[str]:
@@ -204,5 +228,7 @@ def lekcja(widoki: list, poprawny_kod: str, trafiony: bool) -> dict:
         "zagadka": pierwsza, "model": typy, "widziane": widziane, "wskazowki": wskazowki,
         "pomylony": pomylony["pl"] if pomylony else "", "roznice": roznice(k, pomylony) if pomylony else [],
         "pasujace": pasujace_reguly(ost, poprawny_kod),
+        "regiony": typuj_region(ost, poprawny_kod),
+        "pasujace_regionalne": pasujace_reguly(ost, poprawny_kod, 3, regionalne=True),
         "pasujace_pomylony": pasujace_reguly(ost, pomylony["id"], 2) if pomylony else [],
     }

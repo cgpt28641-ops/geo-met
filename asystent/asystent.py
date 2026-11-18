@@ -276,7 +276,6 @@ class Asystent:
             def praca():
                 lekcja = silnik_lokalny.lekcja(widoki, kod, ok)
                 wpis = silnik.zapisz_runde(lekcja, widoki, wynik)
-                self.widoki.clear()
                 info = f"model lokalny · {silnik_lokalny.urzadzenie()} · 0 zł"
                 if self.cfg.get("sync_url") and self.cfg.get("sync_token"):
                     try:
@@ -289,6 +288,12 @@ class Asystent:
                     czesci += [("\nModel zauważył na zrzutach (sprawdź sam):\n", "b")] + [(f" • {w['widac']} ({w['pewnosc']}%) → {w['regula']}\n", "") for w in lekcja["widziane"]]
                 if lekcja["pasujace"]:
                     czesci += [("\nReguły GeoMeta najlepiej pasujące do tych widoków:\n", "b")] + [(f" • {x}\n", "") for x in lekcja["pasujace"]]
+                if lekcja["regiony"]:
+                    r0 = lekcja["regiony"][0]
+                    czesci += [("\nGdzie w tym kraju (typ modelu):\n", "b")] + [(f" • {r['region']} — {r['pewnosc']}%\n", "") for r in lekcja["regiony"]]
+                    czesci.append((f"   mapa: https://www.google.com/maps/@{r0['lat']},{r0['lon']},8z\n", "szary"))
+                if lekcja["pasujace_regionalne"]:
+                    czesci += [("\nWskazówki regionalne pasujące do widoków:\n", "b")] + [(f" • {x}\n", "") for x in lekcja["pasujace_regionalne"]]
                 if lekcja["pasujace_pomylony"]:
                     czesci += [(f"\nDlaczego model myślał o: {lekcja['pomylony']}\n", "b")] + [(f" • {x}\n", "") for x in lekcja["pasujace_pomylony"]]
                 if lekcja["przeoczone"]:
