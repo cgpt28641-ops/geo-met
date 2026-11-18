@@ -17,6 +17,7 @@ from collections import deque
 from tkinter import messagebox, ttk
 
 import silnik
+import silnik_lokalny
 import synchronizacja
 
 KOLOR_TLA = "#0f172a"
@@ -50,8 +51,17 @@ class Asystent:
         self.root.after(200, self._obsluz_kolejke)
         if self.cfg.get("auto_zrzuty"):
             threading.Thread(target=self._petla_zrzutow, daemon=True).start()
-        if not (self.cfg.get("api_key") or "").strip():
+        if self.cfg.get("tryb") == "lokalny":
+            ok, powod = silnik_lokalny.dostepny()
+            if not ok:
+                self.cfg["tryb"] = "claude"
+                self.root.after(600, lambda: self.pisz([("Tryb darmowy niedostępny. ", "b"), (powod + "\nPrzełączono na tryb Claude (płatny).", "")]))
+        if self.cfg.get("tryb") == "claude" and not (self.cfg.get("api_key") or "").strip():
             self.root.after(400, self.ustawienia)
+
+    @property
+    def lokalny(self) -> bool:
+        return self.cfg.get("tryb") == "lokalny"
 
     # ───────────── okno ─────────────
     def _buduj_okno(self) -> None:
@@ -84,9 +94,9 @@ class Asystent:
     def _odswiez_status(self) -> None:
         on = self.cfg.get("podpowiedzi")
         self.lbl_tryb.config(text=("💡 podpowiedzi WŁ." if on else "🎓 tylko nauka"), fg=(KOLOR_AKCENT if on else KOLOR_SZARY))
-        self.btn_analiza.config(state=("normal" if on else "disabled"))
+        self.btn_analiza.config(state=("normal" if on and not self.lokalny else "disabled"))
         k = self.silnik.koszt
-        self.lbl_koszt.config(text=f"{k.wywolania} analiz · ~{k.pln:.2f} zł")
+        self.lbl_koszt.config(text="tryb darmowy · 0 zł" if self.lokalny else f"{k.wywolania} analiz · ~{k.pln:.2f} zł")
 
     def pisz(self, czesci: list[tuple[str, str]]) -> None:
         self.txt.config(state="normal")
@@ -154,6 +164,10 @@ class Asystent:
         if not self.cfg.get("podpowiedzi"):
             self.pisz([("Podpowiedzi są wyłączone. ", "b"), (f"Włącz je klawiszem {self.cfg['skrot_podpowiedzi'].upper()}.", "")])
             return
+        if self.lokalny:
+            self.pisz([("Podpowiedzi na żywo działają tylko w trybie Claude. ", "b"),
+                       ("Darmowy model nie rozpoznaje, czy trwa mecz rankingowy, więc w tym trybie jest tylko nauka po rundzie (F10). Tryb zmienisz w ⚙.", "")])
+            return
         # drugie naciśnięcie po analizie = odkryj kraje
         if self.ostatnia_analiza and not self.odkryte and time.time() - self.ostatnia_analiza.get("_czas", 0) < 120:
             self.odkryte = True
@@ -187,6 +201,8 @@ class Asystent:
         self.pisz(czesci)
 
     def koniec_rundy(self) -> None:
+        if self.lokalny:
+            return self.koniec_rundy_lokalnie()
         self.pisz([("Uczę się z tej rundy…", "szary")])
         widoki = list(self.widoki)
 
@@ -214,6 +230,69 @@ class Asystent:
             self.kolejka.put(("pisz", czesci))
         self._w_tle(praca)
 
+    def koniec_rundy_lokalnie(self) -> None:
+        """Tryb darmowy: pytamy o poprawny kraj, a model lokalny ocenia widoki z rundy."""
+        if self.zajety:
+            return
+        widoki = list(self.widoki)
+        try:
+            wynik = silnik.zrob_zrzut(self.cfg.get("monitor", 1))
+        except Exception as e:
+            self.pisz([("Błąd zrzutu ekranu: ", "b"), (str(e), "")])
+            return
+        lista = sorted(silnik_lokalny.kraje(), key=lambda k: k["pl"])
+        okno = tk.Toplevel(self.root)
+        okno.title("Koniec rundy")
+        okno.attributes("-topmost", True)
+        okno.geometry("340x190")
+        ramka = ttk.Frame(okno, padding=12)
+        ramka.pack(fill="both", expand=True)
+        ttk.Label(ramka, text="Jaki to był kraj? (zacznij pisać)").pack(anchor="w")
+        zm = tk.StringVar()
+        pole = ttk.Combobox(ramka, textvariable=zm, values=[k["pl"] for k in lista])
+        pole.pack(fill="x", pady=6)
+        pole.focus_set()
+
+        def filtruj(_=None):
+            t = zm.get().lower()
+            pole["values"] = [k["pl"] for k in lista if t in k["pl"].lower()] or [k["pl"] for k in lista]
+        pole.bind("<KeyRelease>", filtruj)
+        trafiony = tk.BooleanVar(value=False)
+        ttk.Checkbutton(ramka, text="Trafiłem ten kraj", variable=trafiony).pack(anchor="w", pady=4)
+        blad = ttk.Label(ramka, text="", foreground="#c00")
+        blad.pack(anchor="w")
+
+        def zatwierdz(_=None):
+            t = zm.get().strip().lower()
+            pas = [k for k in lista if k["pl"].lower() == t] or [k for k in lista if k["pl"].lower().startswith(t)] if t else []
+            if len(pas) != 1 and not any(k["pl"].lower() == t for k in pas):
+                blad.config(text="Wybierz kraj z listy.")
+                return
+            kod = pas[0]["id"]
+            ok = trafiony.get()
+            okno.destroy()
+            self.pisz([("Analizuję rundę (model lokalny)…", "szary"), ("\nPierwsze uruchomienie pobiera model (~1,7 GB) — to może potrwać kilka minut.", "szary")])
+
+            def praca():
+                lekcja = silnik_lokalny.lekcja(widoki, kod, ok)
+                wpis = silnik.zapisz_runde(lekcja, widoki, wynik)
+                self.widoki.clear()
+                info = f"model lokalny · {silnik_lokalny.urzadzenie()} · 0 zł"
+                if self.cfg.get("sync_url") and self.cfg.get("sync_token"):
+                    try:
+                        synchronizacja.wyslij_runde(self.cfg, wpis)
+                        info += " · ☁ zapisano w koncie GeoMeta"
+                    except Exception as e:
+                        info += f" · ☁ nie wysłano ({e})"
+                czesci = [(("✅ " if ok else "❌ ") + lekcja["poprawny_kraj"] + "\n\n", "akc"), (lekcja["lekcja"] + "\n", "")]
+                if lekcja["przeoczone"]:
+                    czesci += [("\nPo czym poznać ten kraj:\n", "b")] + [(f" • {x}\n", "") for x in lekcja["przeoczone"]]
+                czesci.append(("\n" + info, "szary"))
+                self.kolejka.put(("pisz", czesci))
+            self._w_tle(praca)
+        pole.bind("<Return>", zatwierdz)
+        ttk.Button(ramka, text="OK", command=zatwierdz).pack(anchor="e", pady=4)
+
     def raport(self) -> None:
         p = silnik.raport_html()
         silnik.eksport_dla_geometa()
@@ -224,7 +303,7 @@ class Asystent:
         okno = tk.Toplevel(self.root)
         okno.title("Ustawienia — GeoMeta Asystent")
         okno.attributes("-topmost", True)
-        okno.geometry("520x470")
+        okno.geometry("540x540")
         ramka = ttk.Frame(okno, padding=14)
         ramka.pack(fill="both", expand=True)
 
@@ -234,7 +313,11 @@ class Asystent:
             ttk.Entry(ramka, textvariable=zm, show="•" if ukryte else "").pack(fill="x")
             return zm
 
-        klucz = pole("Klucz API Anthropic (console.anthropic.com → API Keys):", self.cfg.get("api_key", ""), True)
+        ttk.Label(ramka, text="Tryb:").pack(anchor="w", pady=(0, 2))
+        tryby = {"Darmowy — model na tym komputerze (nauka po rundzie)": "lokalny", "Claude — płatny, dokładniejszy, z podpowiedziami": "claude"}
+        tryb = tk.StringVar(value=next(n for n, v in tryby.items() if v == self.cfg.get("tryb", "lokalny")))
+        ttk.Combobox(ramka, textvariable=tryb, values=list(tryby), state="readonly").pack(fill="x")
+        klucz = pole("Klucz API Anthropic (tylko tryb Claude):", self.cfg.get("api_key", ""), True)
         ttk.Label(ramka, text="Model:").pack(anchor="w", pady=(8, 2))
         nazwy = {v["nazwa"]: k for k, v in silnik.MODELE.items()}
         model = tk.StringVar(value=silnik.MODELE[self.cfg["model"]]["nazwa"])
@@ -246,12 +329,17 @@ class Asystent:
                               "żeby to okienko było widoczne nad nią.", foreground="#666").pack(anchor="w", pady=10)
 
         def zapisz():
-            self.cfg.update(api_key=klucz.get().strip(), model=nazwy[model.get()], sync_url=url.get().strip().rstrip("/"),
+            self.cfg.update(tryb=tryby[tryb.get()], api_key=klucz.get().strip(), model=nazwy[model.get()], sync_url=url.get().strip().rstrip("/"),
                             sync_token=token.get().strip())
             try:
                 self.cfg["monitor"] = max(1, int(monitor.get()))
             except ValueError:
                 pass
+            if self.lokalny:
+                ok, powod = silnik_lokalny.dostepny()
+                if not ok:
+                    self.cfg["tryb"] = "claude"
+                    messagebox.showwarning("GeoMeta", powod)
             silnik.zapisz_ustawienia(self.cfg)
             okno.destroy()
             self._odswiez_status()

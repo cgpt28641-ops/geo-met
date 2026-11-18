@@ -7,6 +7,21 @@ Małe okienko na komputer, które działa obok GeoGuessra (przeglądarka lub Ste
 
 Program patrzy tylko na to, co widać na ekranie (nie czyta danych gry). Analizę robi model Claude.
 
+## Tryb darmowy (bez opłat)
+
+W ustawieniach (⚙) jest przełącznik **Tryb**:
+
+- **Darmowy** — model StreetCLIP działa na twoim komputerze (karta NVIDIA lub procesor), nic nie kosztuje i żadne zdjęcia nie są wysyłane. Po rundzie (F10) wpisujesz poprawny kraj, a asystent pokazuje, co typował model na widokach z rundy, i wskazówki z bazy GeoMeta dla tego kraju. Podpowiedzi na żywo (F8) w tym trybie nie ma.
+- **Claude** — płatny: sam odczytuje wynik rundy, opisuje konkretnie, co było widać, i daje podpowiedzi w treningu.
+
+Tryb darmowy wymaga Pythona (wersja .exe go nie zawiera, bo model i biblioteki ważą kilka GB):
+
+1. Zainstaluj Pythona 3.12 z python.org (zaznacz „Add python.exe to PATH”).
+2. Uruchom `zainstaluj_darmowy.bat` (jednorazowo, pobiera ok. 3 GB bibliotek).
+3. Uruchamiaj asystenta przez `uruchom.bat`. Przy pierwszej rundzie pobierze się model (~1,7 GB).
+
+W teście na 45 zdjęciach krajobrazów model trafił kraj w 56% przypadków, a w 82% poprawny kraj był w pierwszej trójce. Na zbliżeniach pojedynczych znaków czy słupków radzi sobie słabo.
+
 ## Koszt
 
 Każda analiza (F8 lub F10) to jedno zapytanie do Claude. Koszt widać na dole okienka.

@@ -41,6 +41,7 @@ MODELE = {
 USD_PLN = 4.0  # przybliżony kurs do pokazywania kosztów
 
 DOMYSLNE = {
+    "tryb": "lokalny",         # "lokalny" = darmowy model na tym komputerze, "claude" = płatny, dokładniejszy
     "api_key": "",
     "model": "claude-opus-5-5",
     "monitor": 1,
