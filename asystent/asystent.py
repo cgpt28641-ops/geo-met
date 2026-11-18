@@ -287,6 +287,10 @@ class Asystent:
                 czesci = [(("✅ " if ok else "❌ ") + lekcja["poprawny_kraj"] + "\n\n", "akc"), (lekcja["lekcja"] + "\n", "")]
                 if lekcja["widziane"]:
                     czesci += [("\nModel zauważył na zrzutach (sprawdź sam):\n", "b")] + [(f" • {w['widac']} ({w['pewnosc']}%) → {w['regula']}\n", "") for w in lekcja["widziane"]]
+                if lekcja["pasujace"]:
+                    czesci += [("\nReguły GeoMeta najlepiej pasujące do tych widoków:\n", "b")] + [(f" • {x}\n", "") for x in lekcja["pasujace"]]
+                if lekcja["pasujace_pomylony"]:
+                    czesci += [(f"\nDlaczego model myślał o: {lekcja['pomylony']}\n", "b")] + [(f" • {x}\n", "") for x in lekcja["pasujace_pomylony"]]
                 if lekcja["przeoczone"]:
                     czesci += [("\nZłote wskazówki:\n", "b")] + [(f" • {x}\n", "") for x in lekcja["przeoczone"]]
                 if lekcja["roznice"]:

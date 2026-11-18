@@ -123,6 +123,54 @@ def sprawdz_reguly(obrazy: list, prog: float = 0.8) -> list[dict]:
     return wynik
 
 
+def _reguly_krajow():
+    """Reguły rozpoznawania z GeoMeta (Plonk It) jako opisy dla modelu; liczone raz i zapisywane na dysku."""
+    if "rk" in _stan:
+        return _stan["rk"]
+    _zaladuj()
+    torch, model, proc = _stan["torch"], _stan["model"], _stan["proc"]
+    dane = json.loads((silnik.katalog_zasobow() / "reguly.json").read_text(encoding="utf-8"))
+    wpisy = [(kod, en, pl) for kod, lst in dane.items() for en, pl in lst]
+    plik = silnik.katalog_aplikacji() / f"reguly-{len(wpisy)}.pt"
+    emb = None
+    if plik.exists():
+        try:
+            emb = torch.load(plik, map_location=_stan["urz"])
+        except Exception:
+            emb = None
+    if emb is None or len(emb) != len(wpisy):
+        czesci = []
+        with torch.no_grad():
+            for i in range(0, len(wpisy), 64):
+                wej = proc(text=[w[1] for w in wpisy[i:i + 64]], return_tensors="pt", padding=True, truncation=True, max_length=77).to(_stan["urz"])
+                t = model.text_projection(model.text_model(**wej).pooler_output)
+                czesci.append(t / t.norm(dim=-1, keepdim=True))
+        emb = torch.cat(czesci)
+        try:
+            torch.save(emb.cpu(), plik)
+        except Exception:
+            pass
+    _stan["rk"] = (wpisy, emb.to(_stan["urz"]))
+    return _stan["rk"]
+
+
+def pasujace_reguly(obrazy: list, kod: str, ile: int = 3) -> list[str]:
+    """Reguły danego kraju, które najlepiej pasują do zrzutów (po polsku)."""
+    wpisy, emb = _reguly_krajow()
+    idx = [i for i, w in enumerate(wpisy) if w[0] == kod]
+    if not idx or not obrazy:
+        return []
+    torch, model, proc = _stan["torch"], _stan["model"], _stan["proc"]
+    with torch.no_grad():
+        suma = 0
+        for img in obrazy:
+            wej = proc(images=img.convert("RGB"), return_tensors="pt").to(_stan["urz"])
+            o = model.visual_projection(model.vision_model(**wej).pooler_output)
+            suma = suma + (o / o.norm(dim=-1, keepdim=True)) @ emb[idx].T
+        top = suma[0].topk(min(ile, len(idx))).indices.tolist()
+    return [wpisy[idx[i]][2] for i in top]
+
+
 def roznice(a: dict, b: dict, ile: int = 4) -> list[str]:
     """Kategorie, w których oba kraje mają wskazówki — do odróżniania pomylonych krajów."""
     out = []
@@ -155,4 +203,6 @@ def lekcja(widoki: list, poprawny_kod: str, trafiony: bool) -> dict:
         "lekcja": f"{k['summary']} {ocena}", "przeoczone": k["tips"][:3],
         "zagadka": pierwsza, "model": typy, "widziane": widziane, "wskazowki": wskazowki,
         "pomylony": pomylony["pl"] if pomylony else "", "roznice": roznice(k, pomylony) if pomylony else [],
+        "pasujace": pasujace_reguly(ost, poprawny_kod),
+        "pasujace_pomylony": pasujace_reguly(ost, pomylony["id"], 2) if pomylony else [],
     }

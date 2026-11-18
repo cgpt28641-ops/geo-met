@@ -25,7 +25,7 @@ jobs:
         run: python -m py_compile asystent.py silnik.py silnik_lokalny.py synchronizacja.py
       - name: Zbuduj .exe
         working-directory: asystent
-        run: pyinstaller --onefile --noconsole --name GeoMetaAsystent --add-data "meta_kontekst.txt;." --add-data "kraje.json;." asystent.py
+        run: pyinstaller --onefile --noconsole --name GeoMetaAsystent --add-data "meta_kontekst.txt;." --add-data "kraje.json;." --add-data "reguly.json;." asystent.py
       - uses: actions/upload-artifact@v4
         with:
           name: GeoMetaAsystent-Windows

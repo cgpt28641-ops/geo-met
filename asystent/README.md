@@ -11,7 +11,7 @@ Program patrzy tylko na to, co widać na ekranie (nie czyta danych gry). Analiz�
 
 W ustawieniach (⚙) jest przełącznik **Tryb**:
 
-- **Darmowy** — model StreetCLIP działa na twoim komputerze (karta NVIDIA lub procesor), nic nie kosztuje i żadne zdjęcia nie są wysyłane. Po rundzie (F10) wpisujesz poprawny kraj, a asystent pokazuje, co typował model na widokach z rundy, i wskazówki z bazy GeoMeta dla tego kraju. Podpowiedzi na żywo (F8) w tym trybie nie ma.
+- **Darmowy** — model StreetCLIP działa na twoim komputerze (karta NVIDIA lub procesor), nic nie kosztuje i żadne zdjęcia nie są wysyłane. Po rundzie (F10) wpisujesz poprawny kraj, a asystent pokazuje, co typował model na widokach z rundy, i wskazówki z bazy GeoMeta dla tego kraju. Podpowiedzi na żywo (F8) w tym trybie nie ma. Lekcja zawiera też reguły GeoMeta najlepiej pasujące do widoków z rundy, reguły ogólne zauważone na zrzutach (pismo, kolor linii, krajobraz) i porównanie z krajem, z którym model pomylił poprawny.
 - **Claude** — płatny: sam odczytuje wynik rundy, opisuje konkretnie, co było widać, i daje podpowiedzi w treningu.
 
 Tryb darmowy wymaga Pythona (wersja .exe go nie zawiera, bo model i biblioteki ważą kilka GB):
