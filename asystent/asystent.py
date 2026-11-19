@@ -222,25 +222,30 @@ class Asystent:
         bledy = []
         try:
             import keyboard
-            keyboard.unhook_all_hotkeys()
         except Exception as e:
             keyboard = None
             bledy.append(f"klawiatura: {e}")
         try:
             import mouse
-            mouse.unhook_all()
         except Exception as e:
             mouse = None
             bledy.append(f"mysz: {e}")
+        # zdejmujemy tylko skróty, które sami wcześniej podpięliśmy (po zmianie w ustawieniach)
+        for rodzaj, uchwyt in getattr(self, "_podpiete", []):
+            try:
+                (keyboard.remove_hotkey if rodzaj == "k" else mouse.unhook)(uchwyt)
+            except Exception:
+                pass
+        self._podpiete = []
         for nazwa, fn in akcje.items():
             skrot = str(self.cfg.get(nazwa, "")).strip().lower()
             wywolaj = (lambda f=fn: self.kolejka.put(("akcja", f)))
             try:
                 if skrot.startswith("mysz:"):
                     if mouse:
-                        mouse.on_button(wywolaj, buttons=(skrot[5:],), types=("down",))
+                        self._podpiete.append(("m", mouse.on_button(wywolaj, buttons=(skrot[5:],), types=("down",))))
                 elif skrot and keyboard:
-                    keyboard.add_hotkey(skrot, wywolaj)
+                    self._podpiete.append(("k", keyboard.add_hotkey(skrot, wywolaj)))
             except Exception as e:
                 bledy.append(f"{skrot}: {e}")
         if bledy:  # brak uprawnień lub biblioteki — zostają przyciski w okienku
