@@ -103,6 +103,40 @@ def pamiec_karty() -> str:
     return f"karta: {m[0] / 1024:.1f} z {m[1] / 1024:.1f} GB" + (f" (asystent {m[2] / 1024:.1f} GB)" if m[2] else "")
 
 
+_gpu = threading.RLock()          # jedna ciężka operacja naraz (analiza w tle i analiza na żądanie nie wchodzą sobie w drogę)
+_pamiec_emb: dict = {}            # opis (wektory) już policzony dla danego zrzutu: cały widok + trzy fragmenty
+
+
+def _osadzenia(obrazy: list) -> list:
+    """Wektory modelu dla zrzutów (dla każdego: cały widok i trzy fragmenty). Brakujące liczone są razem, w jednym przejściu."""
+    _zaladuj()
+    torch, model, proc = _stan["torch"], _stan["model"], _stan["proc"]
+    with _gpu:
+        brak = [img for img in obrazy if not (_pamiec_emb.get(id(img)) and _pamiec_emb[id(img)][0] is img)]
+        brak = list({id(i): i for i in brak}.values())
+        with torch.no_grad():
+            for start in range(0, len(brak), 4):          # po 4 zrzuty (16 obrazów) naraz — mieści się w pamięci karty
+                porcja = brak[start:start + 4]
+                wej = proc(images=[f for img in porcja for f in _fragmenty(img)], return_tensors="pt").to(_stan["urz"])
+                o = model.visual_projection(model.vision_model(**wej).pooler_output)
+                o = o / o.norm(dim=-1, keepdim=True)
+                for i, img in enumerate(porcja):
+                    _pamiec_emb[id(img)] = (img, o[i * 4:i * 4 + 4])
+        wynik = [_pamiec_emb[id(img)][1] for img in obrazy]
+        if len(_pamiec_emb) > 90:
+            zostaw = {id(img) for img in obrazy}
+            for k in [k for k in _pamiec_emb if k not in zostaw][:45]:
+                del _pamiec_emb[k]
+    return wynik
+
+
+def przygotuj_widoki(obrazy: list) -> None:
+    """Analiza w tle: liczy zawczasu opis i napisy dla widoków z rundy, żeby lekcja po rundzie była gotowa od razu."""
+    _osadzenia(obrazy)
+    if napisy_dostepne():
+        czytaj_napisy(obrazy[-3:])
+
+
 def _fragmenty(img) -> list:
     w, h = img.size
     img = img.convert("RGB").crop((0, int(h * 0.10), w, int(h * 0.90)))  # bez pasków interfejsu gry
@@ -227,7 +261,11 @@ def czytaj_napisy(obrazy: list, kandydaci: list | None = None) -> list[dict]:
         if zapamietane is not None and zapamietane[0] is img0:
             odczyty = zapamietane[1]
         else:
-            pierwsze = ocr.readtext(px, text_threshold=0.5, low_text=0.3)
+          with _gpu:
+            # Pierwsze czytanie w pełnej rozdzielczości: w teście pomniejszanie (nawet do 1600 px) gubiło małe tablice z nazwami miast.
+            sk = 1.0
+            maly = np.asarray(Image.fromarray(px).resize((int(w * sk), int(h * sk)), Image.BILINEAR)) if sk < 1 else px
+            pierwsze = [([[q[0] / sk, q[1] / sk] for q in ramka], t, pw) for ramka, t, pw in ocr.readtext(maly, text_threshold=0.5, low_text=0.3)]
             odczyty = [(t, float(pw)) for _, t, pw in pierwsze]
             try:  # drugi etap: małe napisy powiększone 4x i sklejone w jeden obraz, czytane za jednym razem (szybciej niż każdy osobno)
                 czyste = Image.fromarray(px)
@@ -330,11 +368,9 @@ def _dane_uczenia():
 
 def _osadz(obrazy: list):
     """Średni opis (wektor) całych widoków z rundy."""
-    torch, model, proc = _stan["torch"], _stan["model"], _stan["proc"]
+    torch = _stan["torch"]
     with torch.no_grad():
-        wej = proc(images=[_fragmenty(i)[0] for i in obrazy], return_tensors="pt").to(_stan["urz"])
-        o = model.visual_projection(model.vision_model(**wej).pooler_output)
-        o = (o / o.norm(dim=-1, keepdim=True)).mean(0)
+        o = torch.stack([e[0] for e in _osadzenia(obrazy)]).mean(0)
         return (o / o.norm()).cpu()
 
 
@@ -408,11 +444,8 @@ def typuj(obrazy: list, ile: int = 5, uzyj_napisow: bool = True) -> list[dict]:
     torch, model, proc = _stan["torch"], _stan["model"], _stan["proc"]
     pojedyncze = []
     with torch.no_grad():
-        for img in obrazy:
+        for o in _osadzenia(obrazy):
             # cały widok + trzy fragmenty (lewy, środek, prawy) — w teście dało to wyraźnie lepszą trafność
-            wej = proc(images=_fragmenty(img), return_tensors="pt").to(_stan["urz"])
-            o = model.visual_projection(model.vision_model(**wej).pooler_output)
-            o = o / o.norm(dim=-1, keepdim=True)
             pr = (100 * o @ _stan["tekst"].T).softmax(-1)
             p = (pr[0] * 2 + pr[1:].sum(0)) / 5   # cały widok liczy się podwójnie
             pojedyncze.append(p)
@@ -671,11 +704,7 @@ def sprawdz_reguly(obrazy: list, prog: float = 0.8) -> list[dict]:
         _stan["reguly"] = emb
     wynik = []
     with torch.no_grad():
-        obr = []
-        for img in obrazy:
-            wej = proc(images=img.convert("RGB"), return_tensors="pt").to(_stan["urz"])
-            o = model.visual_projection(model.vision_model(**wej).pooler_output)
-            obr.append(o / o.norm(dim=-1, keepdim=True))
+        obr = [e[:1] for e in _osadzenia(obrazy)]
         for grupa, emb in zip(REGULY, _stan["reguly"]):
             p = sum((100 * o @ emb.T).softmax(-1)[0] for o in obr) / len(obr)
             i = int(p.argmax())
@@ -724,10 +753,8 @@ def pasujace_reguly(obrazy: list, kod: str, ile: int = 3, regionalne: bool = Fal
     torch, model, proc = _stan["torch"], _stan["model"], _stan["proc"]
     with torch.no_grad():
         suma = 0
-        for img in obrazy:
-            wej = proc(images=img.convert("RGB"), return_tensors="pt").to(_stan["urz"])
-            o = model.visual_projection(model.vision_model(**wej).pooler_output)
-            suma = suma + (o / o.norm(dim=-1, keepdim=True)) @ emb[idx].T
+        for e in _osadzenia(obrazy):
+            suma = suma + e[:1] @ emb[idx].T
         top = suma[0].topk(min(ile, len(idx))).indices.tolist()
     return [wpisy[idx[i]][2] for i in top]
 
@@ -746,10 +773,8 @@ def typuj_region(obrazy: list, kod: str, ile: int = 3) -> list[dict]:
         t = model.text_projection(model.text_model(**wej).pooler_output)
         t = t / t.norm(dim=-1, keepdim=True)
         suma = 0
-        for img in obrazy:
-            wej = proc(images=_fragmenty(img), return_tensors="pt").to(_stan["urz"])
-            o = model.visual_projection(model.vision_model(**wej).pooler_output)
-            pr = (100 * (o / o.norm(dim=-1, keepdim=True)) @ t.T).softmax(-1)
+        for o in _osadzenia(obrazy):
+            pr = (100 * o @ t.T).softmax(-1)
             suma = suma + (pr[0] * 2 + pr[1:].sum(0)) / 5
         p = (suma / len(obrazy)).cpu()
     top = p.topk(min(ile, len(lista)))

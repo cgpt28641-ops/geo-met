@@ -83,6 +83,7 @@ class Asystent:
         self._podepnij_skroty()
         self.root.after(200, self._obsluz_kolejke)
         threading.Thread(target=self._petla_pamieci, daemon=True).start()
+        threading.Thread(target=self._petla_w_tle, daemon=True).start()
         if self.cfg.get("auto_zrzuty"):
             threading.Thread(target=self._petla_zrzutow, daemon=True).start()
         if self.cfg.get("tryb") == "lokalny":
@@ -388,6 +389,30 @@ class Asystent:
             messagebox.showwarning("GeoMeta", f"Nie udało się nagrać skrótu: {e}")
             return
         self.root.after(10000, lambda: zakoncz(""))   # po 10 s bez naciśnięcia nagrywanie się wyłącza
+
+    def _petla_w_tle(self) -> None:
+        """Analiza w tle: w trakcie rundy liczy zawczasu widoki, które wejdą do lekcji, żeby po rundzie nie trzeba było czekać."""
+        ostatnie, bledy = (), 0
+        while True:
+            time.sleep(4)
+            try:
+                if not (self.lokalny and self.cfg.get("w_tle", True)) or self.zajety or self.ostatni_ekran != "runda" or self.runda_zamknieta:
+                    continue
+                if "model" not in silnik_lokalny._stan:      # model jeszcze się wczytuje
+                    continue
+                wybrane = silnik.wybierz_rozne(list(self.widoki), 6)
+                klucz = tuple(id(w) for w in wybrane)
+                if not wybrane or klucz == ostatnie:
+                    continue
+                start = time.time()
+                silnik_lokalny.przygotuj_widoki(wybrane)
+                ostatnie = klucz
+                if time.time() - start > 0.3:
+                    silnik.log(f"analiza w tle: {len(wybrane)} widoków przygotowanych w {time.time() - start:.1f} s")
+            except Exception:
+                bledy += 1
+                if bledy <= 3:
+                    silnik.log("BŁĄD analizy w tle", blad=True)
 
     def _rozpoznaj_ekran(self, zrzut) -> str:
         """'runda', 'wynik', 'podsumowanie' albo 'mapa' (mapa otwarta w trakcie rundy — taki zrzut pomijamy)."""
@@ -778,7 +803,7 @@ class Asystent:
         okno = tk.Toplevel(self.root)
         okno.title("Ustawienia — GeoMeta Asystent")
         okno.attributes("-topmost", True)
-        okno.geometry("560x860")
+        okno.geometry("600x900")
         ramka = ttk.Frame(okno, padding=14)
         ramka.pack(fill="both", expand=True)
 
@@ -820,6 +845,8 @@ class Asystent:
         ttk.Checkbutton(ramka, text="Kompaktowy widok w trakcie rundy (pełna lekcja po rundzie)", variable=kompakt).pack(anchor="w")
         porady_zm = tk.BooleanVar(value=bool(self.cfg.get("porady", False)))
         ttk.Checkbutton(ramka, text="Pokazuj w lekcji porady i wskazówki GeoMeta (wyłączone = tylko to, co rozpoznał program)", variable=porady_zm).pack(anchor="w")
+        w_tle = tk.BooleanVar(value=bool(self.cfg.get("w_tle", True)))
+        ttk.Checkbutton(ramka, text="Analizuj widoki w tle w trakcie rundy (szybsza lekcja; karta pracuje też podczas gry)", variable=w_tle).pack(anchor="w")
         auto_kraj = tk.BooleanVar(value=bool(self.cfg.get("auto_kraj", True)))
         ttk.Checkbutton(ramka, text="Sam odczytuj poprawny kraj z mapy wyniku", variable=auto_kraj).pack(anchor="w")
         monitor = pole("Numer monitora z grą (1 = główny):", self.cfg.get("monitor", 1))
@@ -830,7 +857,7 @@ class Asystent:
 
         def zapisz():
             self.cfg.update(tryb=tryby[tryb.get()], api_key=klucz.get().strip(), model=nazwy[model.get()], sync_url=url.get().strip().rstrip("/"),
-                            sync_token=token.get().strip(), co_ile_s=int(odstep.get()), kompakt=bool(kompakt.get()), auto_kraj=bool(auto_kraj.get()), porady=bool(porady_zm.get()))
+                            sync_token=token.get().strip(), co_ile_s=int(odstep.get()), kompakt=bool(kompakt.get()), auto_kraj=bool(auto_kraj.get()), porady=bool(porady_zm.get()), w_tle=bool(w_tle.get()))
             wybrane = [self._wartosc_skrotu(zm.get()) for zm in skroty.values()]
             if len({w for w in wybrane if w}) < len([w for w in wybrane if w]):
                 messagebox.showwarning("GeoMeta", "Każda akcja musi mieć inny skrót.")

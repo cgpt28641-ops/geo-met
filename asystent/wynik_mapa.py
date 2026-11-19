@@ -168,6 +168,12 @@ def _odleglosc_z_paska(rgb, czyt):
 
 
 def odczytaj(img, typy_modelu: list[str] | None = None) -> dict | None:
+    """Jak _odczytaj, ale pilnuje, żeby w tym samym czasie nie działała analiza w tle."""
+    with silnik_lokalny._gpu:
+        return _odczytaj(img, typy_modelu)
+
+
+def _odczytaj(img, typy_modelu: list[str] | None = None) -> dict | None:
     """Zwraca {kod, pewny, lat, lon, miasta, odleglosc_km, powod} albo None, gdy nie da się nic ustalić."""
     import numpy as np
     typy_modelu = typy_modelu or []

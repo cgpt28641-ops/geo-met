@@ -71,6 +71,7 @@ DOMYSLNE = {
     "co_ile_s": 2,
     "auto_kraj": True,         # poprawny kraj odczytywany z mapy wyniku
     "porady": False,           # porady i wskazówki GeoMeta w lekcji (wyłączone = tylko to, co rozpoznał program)
+    "w_tle": True,             # analiza widoków w tle w trakcie rundy (lekcja po rundzie jest wtedy gotowa od razu)
     "kompakt": True,           # mała belka z typami w trakcie rundy
     "okno": "",                # zapamiętane położenie i rozmiar okienka
     "auto_koniec": True,       # tryb darmowy: sam wykrywa ekran wyniku i otwiera lekcję
