@@ -139,7 +139,7 @@ def przygotuj_widoki(obrazy: list) -> None:
     """Analiza w tle: liczy zawczasu opis i napisy dla widoków z rundy, żeby lekcja po rundzie była gotowa od razu."""
     _osadzenia(obrazy)
     if napisy_dostepne():
-        czytaj_napisy(obrazy[-3:])
+        czytaj_napisy(obrazy)
 
 
 def _fragmenty(img) -> list:
@@ -223,6 +223,20 @@ def czytnik():
                                         gpu=torch.cuda.is_available(), verbose=False)
     return _stan["ocr"]
 
+
+# numery kierunkowe krajów z listy (z szyldów i reklam: „+48 …”)
+KIERUNKOWE = {"1": ["us", "ca", "pr", "do", "vi", "gu", "mp", "as", "bm"], "7": ["ru", "kz"], "20": ["eg"], "27": ["za"], "30": ["gr"], "31": ["nl"], "32": ["be"],
+              "33": ["fr"], "34": ["es"], "36": ["hu"], "39": ["it"], "40": ["ro"], "41": ["ch"], "43": ["at"], "44": ["gb", "je", "im"], "45": ["dk"], "46": ["se"],
+              "47": ["no", "sj"], "48": ["pl"], "49": ["de"], "51": ["pe"], "52": ["mx"], "54": ["ar"], "55": ["br"], "56": ["cl"], "57": ["co"], "60": ["my"],
+              "61": ["au", "cx", "cc"], "62": ["id"], "63": ["ph"], "64": ["nz"], "65": ["sg"], "66": ["th"], "81": ["jp"], "82": ["kr"], "84": ["vn"], "86": ["cn"],
+              "90": ["tr"], "91": ["in"], "92": ["pk"], "94": ["lk"], "216": ["tn"], "221": ["sn"], "223": ["ml"], "233": ["gh"], "234": ["ng"],
+              "239": ["st"], "250": ["rw"], "254": ["ke"], "255": ["tz"], "256": ["ug"], "261": ["mg"], "262": ["re"], "264": ["na"], "266": ["ls"], "267": ["bw"],
+              "268": ["sz"], "298": ["fo"], "299": ["gl"], "350": ["gi"], "351": ["pt"], "352": ["lu"], "353": ["ie"], "354": ["is"], "355": ["al"], "356": ["mt"],
+              "357": ["cy"], "358": ["fi"], "359": ["bg"], "370": ["lt"], "371": ["lv"], "372": ["ee"], "375": ["by"], "376": ["ad"], "377": ["mc"], "378": ["sm"],
+              "380": ["ua"], "381": ["rs"], "382": ["me"], "385": ["hr"], "386": ["si"], "389": ["mk"], "420": ["cz"], "421": ["sk"], "423": ["li"], "500": ["fk"],
+              "502": ["gt"], "506": ["cr"], "507": ["pa"], "508": ["pm"], "591": ["bo"], "593": ["ec"], "596": ["mq"], "598": ["uy"], "599": ["cw"], "678": ["vu"],
+              "852": ["hk"], "853": ["mo"], "855": ["kh"], "856": ["la"], "880": ["bd"], "886": ["tw"], "961": ["lb"], "962": ["jo"], "964": ["iq"], "968": ["om"],
+              "971": ["ae"], "972": ["il"], "974": ["qa"], "975": ["bt"], "976": ["mn"], "977": ["np"], "996": ["kg"]}
 
 # napisy, które są też nazwami miast, ale na ulicy prawie zawsze znaczą coś innego (marki aut, sieci stacji i sklepów)
 NIE_MIASTA = {"toyota", "honda", "suzuki", "nissan", "mazda", "ford", "fiat", "opel", "seat", "volvo", "kia", "hyundai", "isuzu", "hino", "scania",
@@ -325,7 +339,13 @@ def czytaj_napisy(obrazy: list, kandydaci: list | None = None) -> list[dict]:
                 continue
             if pewnosc < 0.55:
                 continue
-            m = re.search(r"\.([a-z]{2})\b", t)
+            tel = re.search(r"(?:\+|\b00)\s?(\d{1,3})[\s\d().-]{6,}", t)      # numer telefonu z kierunkowym kraju, np. „+48 22 123 45 67”
+            if tel:
+                for dl in (3, 2, 1):
+                    if tel.group(1)[:dl] in KIERUNKOWE:
+                        kody, powod = KIERUNKOWE[tel.group(1)[:dl]], f"numer kierunkowy +{tel.group(1)[:dl]}"
+                        break
+            m = None if kody else re.search(r"\.([a-z]{2})\b", t)
             if m and m.group(1) in domeny and ("www" in t or "." in t[:-3]):
                 kody, powod = [domeny[m.group(1)]], f"domena .{m.group(1)}"
             if not kody:
@@ -464,7 +484,7 @@ def typuj(obrazy: list, ile: int = 5, uzyj_napisow: bool = True) -> list[dict]:
         silnik.log("BŁĄD w typowaniu (pomijam ten krok)", blad=True)
     import time
     t_model = time.time()
-    napisy = czytaj_napisy(obrazy[-3:], [lista[i]["id"] for i in p.topk(6).indices.tolist()]) if uzyj_napisow else []
+    napisy = czytaj_napisy(obrazy, [lista[i]["id"] for i in p.topk(6).indices.tolist()]) if uzyj_napisow else []     # napisy ze wszystkich widoków (do 6)
     t_napisy = time.time()
     mapy = _stan.get("ramki_map", {})
     dobre = [q for img, q in zip(obrazy, pojedyncze) if mapy.get(id(img)) is not img]
