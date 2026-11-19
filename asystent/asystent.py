@@ -54,6 +54,7 @@ class Asystent:
             pass
         self.root.configure(bg=KOLOR_TLA)
         self.wys_pelna = 600
+        self.pamiec = ""
         self.pelny_widok = True
         self.root.geometry("400x600-20+60")
         self.root.minsize(300, 200)
@@ -67,6 +68,7 @@ class Asystent:
         self.root.protocol("WM_DELETE_WINDOW", self._zamknij)
         self._podepnij_skroty()
         self.root.after(200, self._obsluz_kolejke)
+        threading.Thread(target=self._petla_pamieci, daemon=True).start()
         if self.cfg.get("auto_zrzuty"):
             threading.Thread(target=self._petla_zrzutow, daemon=True).start()
         if self.cfg.get("tryb") == "lokalny":
@@ -175,7 +177,19 @@ class Asystent:
         self.lbl_tryb.config(text=("💡 podpowiedzi WŁ." if on else "🎓 tylko nauka"), fg=(KOLOR_AKCENT if on else KOLOR_SZARY))
         self.btn_analiza.config(state=("normal" if on else "disabled"))
         k = self.silnik.koszt
-        self.lbl_koszt.config(text="tryb darmowy · 0 zł" if self.lokalny else f"{k.wywolania} analiz · ~{k.pln:.2f} zł")
+        self.lbl_koszt.config(text=("tryb darmowy · 0 zł" + (" · " + self.pamiec if self.pamiec else "")) if self.lokalny else f"{k.wywolania} analiz · ~{k.pln:.2f} zł")
+
+    def _petla_pamieci(self) -> None:
+        """Co kilka sekund sprawdza zajętość pamięci karty graficznej (pokazywaną na dole okienka)."""
+        while True:
+            try:
+                nowa = silnik_lokalny.pamiec_karty() if self.lokalny else ""
+                if nowa != self.pamiec:
+                    self.pamiec = nowa
+                    self.kolejka.put(("akcja", self._odswiez_status))
+            except Exception:
+                pass
+            time.sleep(5)
 
     def pisz(self, czesci: list[tuple[str, str]]) -> None:
         self.txt.config(state="normal")

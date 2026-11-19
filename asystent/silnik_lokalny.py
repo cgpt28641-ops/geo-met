@@ -50,6 +50,25 @@ def urzadzenie() -> str:
     return "karta graficzna" if _stan["urz"] == "cuda" else "procesor"
 
 
+def pamiec_karty() -> str:
+    """Zajęta pamięć karty graficznej: cała karta (razem z grą) i ile z tego bierze asystent. Pusty napis, gdy brak karty NVIDIA."""
+    import subprocess
+    try:
+        wyn = subprocess.run(["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"],
+                             capture_output=True, text=True, timeout=5, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        zajete, cala = [int(x) for x in wyn.stdout.strip().splitlines()[0].split(",")]
+    except Exception:
+        return ""
+    opis = f"karta: {zajete / 1024:.1f} z {cala / 1024:.1f} GB"
+    try:
+        torch = _stan.get("torch")
+        if torch is not None and _stan.get("urz") == "cuda":
+            opis += f" (asystent {torch.cuda.memory_reserved() / 1024 ** 3:.1f} GB)"
+    except Exception:
+        pass
+    return opis
+
+
 def _fragmenty(img) -> list:
     w, h = img.size
     img = img.convert("RGB").crop((0, int(h * 0.10), w, int(h * 0.90)))  # bez pasków interfejsu gry
