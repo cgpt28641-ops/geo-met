@@ -175,7 +175,12 @@ class Asystent:
             for wsp, kolor in p["wielokaty"]:
                 if len(wsp) >= 6:
                     self.plotno.create_polygon(wsp, fill=kolor, outline=mapa.KRAWEDZ, width=1)
-            for x, y, napis, kolor, dy in p["znaczniki"]:
+            for x, y, napis, kolor, dy, tlo in sorted(p["znaczniki"], key=lambda z: not z[5]):   # miasta w tle rysowane pod spodem
+                if tlo:     # miasta do orientacji: mała szara kropka i cienki podpis
+                    self.plotno.create_oval(x - 2, y - 2, x + 2, y + 2, fill=kolor, outline="")
+                    if napis:
+                        self.plotno.create_text(x + 5, y, text=napis, anchor="w", fill=kolor, font=("Segoe UI", 7))
+                    continue
                 self.plotno.create_oval(x - 5, y - 5, x + 5, y + 5, fill=kolor, outline="white", width=2)
                 if napis:
                     self.plotno.create_text(x + 8, y + dy, text=napis, anchor="w", fill="white", font=("Segoe UI", 8, "bold"))
@@ -186,7 +191,15 @@ class Asystent:
     @staticmethod
     def _punkty_mapy(regiony: list, napisy: list) -> list:
         pkt = [{"lat": r["lat"], "lon": r["lon"], "napis": f"{r['region'].replace('województwo ', 'woj. ')} {r['pewnosc']}%", "kolor": "#f2a516"} for r in regiony[:1]]
-        pkt += [{"lat": n["miasto"]["lat"], "lon": n["miasto"]["lon"], "napis": n["miasto"]["nazwa"], "kolor": "#e5484d"} for n in napisy if n.get("miasto")]
+        pkt += [{"lat": n["miasto"]["lat"], "lon": n["miasto"]["lon"], "napis": n["miasto"]["nazwa"], "kolor": "#e5484d", "dokladny": True} for n in napisy if n.get("miasto")]
+        if any(p.get("dokladny") for p in pkt):    # miasto z napisu: przybliżamy na nie i zostawiamy tylko region, który jest blisko
+            m = next(p for p in pkt if p.get("dokladny"))
+            pkt = [p for p in pkt if p.get("dokladny") or (abs(p["lat"] - m["lat"]) < 1.5 and abs(p["lon"] - m["lon"]) < 2)]
+            pkt = [p for p in pkt if not p.get("dokladny") or (abs(p["lat"] - m["lat"]) < 3 and abs(p["lon"] - m["lon"]) < 4)]
+            try:
+                pkt += [t for t in wynik_mapa.miasta_w_okolicy(m["lat"], m["lon"]) if abs(t["lat"] - m["lat"]) + abs(t["lon"] - m["lon"]) > 0.2]
+            except Exception:
+                pass
         return pkt
 
     def _odswiez_status(self) -> None:
@@ -706,7 +719,13 @@ class Asystent:
         czesci.append(("\n" + lekcja["lekcja"] + "\n", ""))
         punkty = self._punkty_mapy(lekcja["regiony"], lekcja["napisy"])
         if lekcja.get("punkt"):
-            punkty.append({"lat": lekcja["punkt"][0], "lon": lekcja["punkt"][1], "napis": "poprawne miejsce", "kolor": "#2a7de1"})
+            la, lo = lekcja["punkt"]
+            # znamy dokładne miejsce: mapa przybliża się na nie, a wokół pokazuje największe miasta do orientacji
+            punkty = [{"lat": la, "lon": lo, "napis": "poprawne miejsce", "kolor": "#2a7de1", "dokladny": True}]
+            try:
+                punkty += wynik_mapa.miasta_w_okolicy(la, lo)
+            except Exception:
+                silnik.log("BŁĄD przy szukaniu miast w okolicy", blad=True)
         self.kolejka.put(("akcja", lambda: (self.rysuj_mape([kod], punkty), self.belka.config(text=znak + lekcja["poprawny_kraj"]), self.ustaw_widok(True))))
         if lekcja["napisy"]:
             czesci += [("\nOdczytane napisy:\n", "b")] + [(f" • „{n['napis']}” ({n['powod']}) → {n['kraje']}\n", "") for n in lekcja["napisy"]]

@@ -38,13 +38,17 @@ def plan(kody: list[str], punkty: list[dict], szer: int, wys: int) -> dict:
         elif kod in d.get("punkty", {}):
             x, y = d["punkty"][kod]
             ramki.append((x - 3, y - 3, x + 3, y + 3))
-    ramki += [(p["lon"] - 1, p["lat"] - 1, p["lon"] + 1, p["lat"] + 1) for p in punkty]
+    dokladne = [p for p in punkty if p.get("dokladny")]
+    if dokladne:  # znamy konkretne miejsce (pinezka z mapy wyniku albo miasto z napisu) — przybliżamy mapę na nie, a nie na cały kraj
+        ramki = [(p["lon"] - 1.6, p["lat"] - 1.1, p["lon"] + 1.6, p["lat"] + 1.1) for p in dokladne]
+    else:
+        ramki += [(p["lon"] - 1, p["lat"] - 1, p["lon"] + 1, p["lat"] + 1) for p in punkty if not p.get("tlo")]
     if ramki:
         x0, y0 = min(r[0] for r in ramki), min(r[1] for r in ramki)
         x1, y1 = max(r[2] for r in ramki), max(r[3] for r in ramki)
     if not ramki or x1 - x0 > 200:
         x0, y0, x1, y1 = -170, -58, 180, 80
-    mx, my = max(4, (x1 - x0) * 0.25), max(3, (y1 - y0) * 0.25)
+    mx, my = (max(0.4, (x1 - x0) * 0.15), max(0.3, (y1 - y0) * 0.15)) if dokladne else (max(4, (x1 - x0) * 0.25), max(3, (y1 - y0) * 0.25))
     x0, x1, y0, y1 = x0 - mx, x1 + mx, max(-85, y0 - my), min(85, y1 + my)
     # dopasuj proporcje do okna
     if (x1 - x0) / (y1 - y0) < szer / wys:
@@ -69,9 +73,11 @@ def plan(kody: list[str], punkty: list[dict], szer: int, wys: int) -> dict:
     znaczniki = []
     for i, p in enumerate(punkty):  # podpisy na przemian wyżej i niżej, żeby na siebie nie nachodziły
         x, y = na_ekran(p["lon"], p["lat"])
-        znaczniki.append((x, y, p["napis"], p.get("kolor", "#f2a516"), -9 if i % 2 else 9))
+        if p.get("tlo") and not (0 <= x <= szer and 0 <= y <= wys):
+            continue
+        znaczniki.append((x, y, p["napis"], p.get("kolor", "#f2a516"), -9 if i % 2 else 9, bool(p.get("tlo"))))
     for kod in kody[:3]:  # małe terytoria bez wielokąta
         if kod in d.get("punkty", {}) and not any(k == kod for k, _ in d["kraje"]):
             x, y = d["punkty"][kod]
-            znaczniki.append((*na_ekran(x, y), "", KOLORY[kody.index(kod)], 0))
+            znaczniki.append((*na_ekran(x, y), "", KOLORY[kody.index(kod)], 0, False))
     return {"wielokaty": wielokaty, "znaczniki": znaczniki}

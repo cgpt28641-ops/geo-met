@@ -76,6 +76,30 @@ def kraj_w_punkcie(lon: float, lat: float):
 
 
 _baza: dict = {}
+_surowa: dict = {}
+
+
+def miasta_w_okolicy(lat: float, lon: float, ile: int = 6, dlat: float = 1.4, dlon: float = 2.0) -> list[dict]:
+    """Największe miejscowości w pobliżu punktu (do orientacji na przybliżonej mapie w okienku)."""
+    baza_miast()
+    if not _surowa:
+        return []
+    wybrane = []     # lista w bazie jest ułożona od największych miast
+    for i, (_, la, lo) in enumerate(_surowa["m"]):
+        if abs(la - lat) <= dlat and abs(lo - lon) <= dlon and all(abs(la - w[1]) + abs(lo - w[2]) > 0.35 for w in wybrane):
+            wybrane.append((i, la, lo))
+            if len(wybrane) >= ile:
+                break
+    if not wybrane:
+        return []
+    nazwy, szukane = {}, {w[0] for w in wybrane}
+    for klucz, ids in _surowa["k"].items():     # pierwsza nazwa danego miasta w bazie to jego nazwa główna
+        for i in ids:
+            if i in szukane and i not in nazwy:
+                nazwy[i] = klucz.title()
+        if len(nazwy) == len(szukane):
+            break
+    return [{"lat": la, "lon": lo, "napis": nazwy.get(i, ""), "kolor": "#cfd6e6", "tlo": True} for i, la, lo in wybrane]
 
 
 def baza_miast():
@@ -84,6 +108,7 @@ def baza_miast():
         import json
         try:
             d = json.loads((silnik.katalog_zasobow() / "miasta_mapa.json").read_text(encoding="utf-8"))
+            _surowa.update(d)
             _baza.update({k: [d["m"][i] for i in ids] for k, ids in d["k"].items()})
         except Exception:   # brak dużej bazy — zostaje mniejsza lista miast
             _baza.update({k: [[m[1], m[2], m[3]]] for k, m in silnik_lokalny.miasta().items()})
