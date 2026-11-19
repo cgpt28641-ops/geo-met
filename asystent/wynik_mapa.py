@@ -33,9 +33,13 @@ def pinezka(img):
     x0, x1 = np.clip(xs - 16, 0, w), np.clip(xs + 17, 0, w)
     ile = suma[y1, x1] - suma[y0, x1] - suma[y1, x0] + suma[y0, x0]
     i = int(ile.argmax())
-    if ile[i] < 250:
+    skala = (h / 1080) ** 2
+    if ile[i] < 320 * skala:
         return None
-    blisko = (abs(xs - xs[i]) < 14) & (abs(ys - ys[i]) < 14) & (ile > 200)
+    # flaga jest mała: przy prawdziwej pinezce żółtych pikseli jest kilkadziesiąt, a nie setki (awatary, paski życia)
+    if not (6 * skala <= int(((abs(xs - xs[i]) < 14) & (abs(ys - ys[i]) < 14)).sum()) <= 90 * skala):
+        return None
+    blisko = (abs(xs - xs[i]) < 14) & (abs(ys - ys[i]) < 14) & (ile > 200 * skala)
     return float(xs[blisko].mean()), float(ys[blisko].mean())
 
 
@@ -71,85 +75,131 @@ def kraj_w_punkcie(lon: float, lat: float):
     return najblizszy, math.sqrt(najmniej) if najblizszy else 1e9
 
 
+_baza: dict = {}
+
+
+def baza_miast():
+    """Duża baza miejscowości do czytania map (ok. 70 tys., z nazwami w różnych językach): nazwa → lista (kraj, szerokość, długość)."""
+    if not _baza:
+        import json
+        try:
+            d = json.loads((silnik.katalog_zasobow() / "miasta_mapa.json").read_text(encoding="utf-8"))
+            _baza.update({k: [d["m"][i] for i in ids] for k, ids in d["k"].items()})
+        except Exception:   # brak dużej bazy — zostaje mniejsza lista miast
+            _baza.update({k: [[m[1], m[2], m[3]]] for k, m in silnik_lokalny.miasta().items()})
+    return _baza
+
+
 def odczytaj(img, typy_modelu: list[str] | None = None) -> dict | None:
     """Zwraca {kod, pewny, lat, lon, miasta, odleglosc_km, powod} albo None, gdy nie da się nic ustalić."""
     import numpy as np
     typy_modelu = typy_modelu or []
-    miasta = silnik_lokalny.miasta()
+    miasta = baza_miast()
     nazwy_krajow = {silnik_lokalny._uprosc(k["pl"]): k["id"] for k in silnik_lokalny.kraje()}
     w, h = img.size
+    gora = 0.22 if silnik.rodzaj_ekranu(img) == "wynik" else 0.06     # pod fioletowym paskiem wyniku albo mapa na cały ekran
     odczyty = silnik_lokalny.czytnik().readtext(np.asarray(img.convert("RGB")))
-    silnik.log(f"mapa wyniku: zrzut {w}x{h} · pinezka {pinezka(img)} · odczytane napisy ({len(odczyty)}): " + " | ".join(f"{t} [{int(pole[0][0])},{int(pole[0][1])}]" for pole, t, pw in odczyty[:60]))
+    silnik.log(f"mapa wyniku: zrzut {w}x{h} · pinezka {pinezka(img)} · odczytane napisy ({len(odczyty)}): " + " | ".join(f"{t} [{int(pole[0][0])},{int(pole[0][1])}]" for pole, t, pw in odczyty[:60])
+               + " · z liczbami na dole: " + " | ".join(f"{t} [{int(pole[0][0])},{int(pole[0][1])}]" for pole, t, pw in odczyty if pole[0][1] > h * 0.8 and re.search(r"\d", t)))
 
-    # odległość gracza: pierwszy od lewej napis „… km” w górnej części ekranu
-    km = []
+    # odległość gracza: pierwszy od lewej napis „… km” w górnej części ekranu (pojedynek) albo w dolnym panelu (zwykła gra)
+    km, km_dol = [], []
     for pole, tekst, pw in odczyty:
-        m = re.search(r"(\d[\d  ]*)\s*km", tekst.lower())
-        if m and pole[0][1] < h * 0.35:
-            km.append((pole[0][0], int(re.sub(r"\D", "", m.group(1)))))
-    odleglosc = min(km)[1] if km else None
+        m = re.search(r"(\d[\d  .,]*)\s*km\b", tekst.lower())
+        if not m or not re.sub(r"\D", "", m.group(1)):
+            continue
+        wartosc = int(re.sub(r"\D", "", m.group(1)))
+        if pole[0][1] < h * 0.35:
+            km.append((pole[0][0], wartosc))
+        elif pole[0][1] > h * 0.80 and pole[0][0] < w * 0.80:      # prawy dolny róg to podziałka mapy, nie wynik
+            km_dol.append((pole[0][0], wartosc))
+    odleglosc = min(km)[1] if km else (min(km_dol)[1] if km_dol else None)
 
     pin = pinezka(img)
-    if pin and not (h * 0.22 < pin[1] < h * 0.97 and w * 0.02 < pin[0] < w * 0.98):
+    if pin and not (h * gora < pin[1] < h * 0.97 and w * 0.02 < pin[0] < w * 0.98):
         pin = None
-    kotwice = []  # (x, y, lon, lat, waga, czy_miasto)
-    for pole, tekst, pw in odczyty:
-        if pw < 0.4 or pole[0][1] < h * 0.22:
+    kotwice = []  # (x, y, lon, lat, czy_miasto, nr napisu) — jeden napis może mieć kilka możliwych miejsc (miasta o tej samej nazwie)
+    for nr, (pole, tekst, pw) in enumerate(odczyty):
+        if pw < 0.4 or pole[0][1] < h * gora:
             continue
         klucz = silnik_lokalny._uprosc(tekst).strip(" .,-")
         cy = (pole[0][1] + pole[2][1]) / 2
         if len(klucz) >= 4 and klucz in miasta:
-            kotwice.append((pole[0][0] - 8, cy, miasta[klucz][3], miasta[klucz][2], 1.0, True))  # kropka miasta jest tuż na lewo od napisu
+            for _, lat, lon in miasta[klucz]:
+                kotwice.append((pole[0][0] - 8, cy, lon, lat, True, nr))  # kropka miasta jest tuż na lewo od napisu
         elif klucz in nazwy_krajow and _srodek_kraju(nazwy_krajow[klucz]):
             lon, lat = _srodek_kraju(nazwy_krajow[klucz])
-            kotwice.append(((pole[0][0] + pole[2][0]) / 2, cy, lon, lat, 0.15, False))
-    if not pin or len(kotwice) < 2:
-        return {"kod": None, "pewny": False, "odleglosc_km": odleglosc, "miasta": 0, "powod": "za mało napisów na mapie"} if odleglosc is not None else None
+            kotwice.append(((pole[0][0] + pole[2][0]) / 2, cy, lon, lat, False, nr))
+    if not pin or len({k[5] for k in kotwice}) < 2:
+        return {"kod": None, "pewny": False, "odleglosc_km": odleglosc, "miasta": 0, "powod": "brak pinezki na mapie" if not pin else "za mało napisów na mapie"} if odleglosc is not None or pin else None
 
-    def dopasuj(kot):
-        A, B = [], []
-        for x, y, lon, lat, waga, _ in kot:
-            A += [[waga * math.radians(lon), waga, 0], [-waga * _mercator(lat), 0, waga]]
-            B += [waga * x, waga * y]
-        return np.linalg.lstsq(np.array(A), np.array(B), rcond=None)[0]
-    def blad(k, s, tx, ty):
-        return math.hypot(s * math.radians(k[2]) + tx - k[0], -s * _mercator(k[3]) + ty - k[1])
+    X = np.array([k[0] for k in kotwice], float)
+    Y = np.array([k[1] for k in kotwice], float)
+    L = np.radians([k[2] for k in kotwice])
+    M = np.array([_mercator(k[3]) for k in kotwice])
+    miasto = np.array([k[4] for k in kotwice])
+    napis = np.array([k[5] for k in kotwice])
+    prog = np.where(miasto, 30.0, 160.0)
+    waga = np.where(miasto, 1.0, 0.3)
 
-    # Część napisów to pomyłki (np. Córdoba czy Santa Fe są na kilku kontynentach), więc szukamy takiego ułożenia mapy,
-    # z którym zgadza się najwięcej napisów: próbujemy każdą parę i liczymy, ile pozostałych do niej pasuje.
+    def zgodne(s, tx, ty):
+        """Dla każdego napisu najwyżej jedno miejsce: to, które najlepiej pasuje do ułożenia mapy."""
+        blad = np.hypot(s * L + tx - X, -s * M + ty - Y)
+        najl = {}
+        for i in np.nonzero(blad <= prog)[0]:
+            if napis[i] not in najl or blad[i] < blad[najl[napis[i]]]:
+                najl[napis[i]] = i
+        return list(najl.values())
+
+    # Część napisów to pomyłki albo miasta o tej samej nazwie gdzie indziej, więc szukamy takiego ułożenia mapy
+    # (skala i przesunięcie), z którym zgadza się najwięcej napisów: próbujemy pary i liczymy pasujące.
+    import random
+    pary = [(i, j) for i in range(len(kotwice)) for j in range(i + 1, len(kotwice)) if napis[i] != napis[j]]
+    if len(pary) > 5000:
+        pary = random.Random(1).sample(pary, 5000)
     najl = None
-    for i in range(len(kotwice)):
-        for j in range(i + 1, len(kotwice)):
-            a, b = kotwice[i], kotwice[j]
-            if math.hypot(a[0] - b[0], a[1] - b[1]) < 60:
+    for i, j in pary:
+        dx, dl = X[j] - X[i], L[j] - L[i]
+        dy, dm = Y[j] - Y[i], M[j] - M[i]
+        if abs(dx) >= abs(dy):
+            if abs(dl) < 1e-6 or abs(dx) < 40:
                 continue
-            try:
-                s, tx, ty = dopasuj([a, b])
-            except Exception:
+            s = dx / dl
+        else:
+            if abs(dm) < 1e-6 or abs(dy) < 40:
                 continue
-            if not (s > 0):
-                continue
-            zgodne = [k for k in kotwice if blad(k, s, tx, ty) <= (30 if k[5] else 160)]
-            ocena = sum(1.0 if k[5] else 0.3 for k in zgodne)
-            if najl is None or ocena > najl[0]:
-                najl = (ocena, zgodne)
-    if najl is None or len(najl[1]) < 2:
+            s = -dy / dm
+        if not (150 < s < 5e6):
+            continue
+        tx, ty = X[i] - s * L[i], Y[i] + s * M[i]
+        blad = np.hypot(s * L + tx - X, -s * M + ty - Y)
+        ok = blad <= prog
+        ocena = sum(waga[k] for k in {napis[k]: k for k in np.nonzero(ok)[0]}.values())
+        if najl is None or ocena > najl[0]:
+            najl = (ocena, s, tx, ty)
+    if najl is None:
         return {"kod": None, "pewny": False, "odleglosc_km": odleglosc, "miasta": 0, "powod": "nie udało się dopasować mapy"}
-    kotwice = najl[1]
-    s, tx, ty = dopasuj(kotwice)
+    wybrane = zgodne(*najl[1:])
+    if len(wybrane) < 2:
+        return {"kod": None, "pewny": False, "odleglosc_km": odleglosc, "miasta": 0, "powod": "nie udało się dopasować mapy"}
+    A, B = [], []
+    for i in wybrane:      # dokładne dopasowanie na samych zgodnych napisach
+        A += [[waga[i] * L[i], waga[i], 0], [-waga[i] * M[i], 0, waga[i]]]
+        B += [waga[i] * X[i], waga[i] * Y[i]]
+    s, tx, ty = np.linalg.lstsq(np.array(A), np.array(B), rcond=None)[0]
     if s <= 0:
         return {"kod": None, "pewny": False, "odleglosc_km": odleglosc, "miasta": 0, "powod": "nie udało się dopasować mapy"}
+    ile_miast = int(sum(1 for i in wybrane if miasto[i]))
     lon = math.degrees((pin[0] - tx) / s)
     lat = math.degrees(2 * math.atan(math.exp((ty - pin[1]) / s)) - math.pi / 2)
-    ile_miast = sum(1 for k in kotwice if k[5])
     kod, odl = kraj_w_punkcie(lon, lat)
     znany = bool(kod) and silnik_lokalny.kraj(kod) is not None
     if not znany:
         return {"kod": None, "pewny": False, "lat": lat, "lon": lon, "odleglosc_km": odleglosc, "miasta": ile_miast, "powod": "miejsce poza krajami z bazy"}
-    if odl == 0 and ile_miast >= 3:
+    if odl == 0 and ile_miast >= 4:
         pewny, powod = True, f"pinezka w granicach kraju, {ile_miast} miast na mapie"
     elif kod in typy_modelu[:3] and odl < 8:
         pewny, powod = True, "zgodne z typem modelu"
     else:
         pewny, powod = False, "wynik przybliżony — potwierdź"
-    return {"kod": kod, "pewny": pewny, "lat": lat, "lon": lon, "dokladne": ile_miast >= 3, "odleglosc_km": odleglosc, "miasta": ile_miast, "powod": powod}
+    return {"kod": kod, "pewny": pewny, "lat": lat, "lon": lon, "dokladne": ile_miast >= 4, "odleglosc_km": odleglosc, "miasta": ile_miast, "powod": powod}
