@@ -11,16 +11,26 @@ Program patrzy tylko na to, co widać na ekranie (nie czyta danych gry). Analiz�
 
 W ustawieniach (⚙) jest przełącznik **Tryb**:
 
-- **Darmowy** — model StreetCLIP działa na twoim komputerze (karta NVIDIA lub procesor), nic nie kosztuje i żadne zdjęcia nie są wysyłane. Po rundzie (F10) wpisujesz poprawny kraj, a asystent pokazuje, co typował model na widokach z rundy, i wskazówki z bazy GeoMeta dla tego kraju. Podpowiedzi na żywo (F9 włącza, F8 analizuje) działają też w tym trybie: model podaje 3 najbardziej prawdopodobne kraje, pasujące reguły GeoMeta i orientacyjny region. Gdy na ekranie są paski życia pojedynku (Duels), podpowiedzi są blokowane. Skróty ustawiasz w ⚙: każdej akcji (analiza, podpowiedzi, koniec rundy) możesz przypisać klawisz albo przycisk myszy (boczne i środkowy). Małe napisy są powiększane i czytane ponownie, a nazwa miasta odczytana nawet z jedną błędną literą wskazuje kraj i region. Każda lekcja zapisuje widoki z poprawnym krajem; od 100 rund asystent sam sprawdza, czy uczenie na twoich rundach poprawia trafność, i włącza je tylko wtedy, gdy pomaga. W okienku jest mapa: typowane kraje są zielone (od najmocniejszego), typowany region ma pomarańczową kropkę, a miasta odczytane z napisów czerwoną. Model analizuje cały widok i trzy jego fragmenty, a napisy z widoku (bez interfejsu gry) są czytane i dopasowywane do reguł: charakterystyczne litery, słowa, domeny i nazwy miast. Asystent sam wykrywa ekran wyniku rundy (fioletowy pasek i mapa) i od razu otwiera okienko z pytaniem o kraj — F10 jest potrzebne tylko, gdy tego nie zrobi. F10 możesz naciskać dowolnie wiele razy w jednej grze, także kilka razy w tej samej rundzie. Model typuje też region w kraju (województwo, stan, prowincja) i dobiera pasujące wskazówki regionalne — typy regionów są orientacyjne, zwykle z niską pewnością. Lekcja zawiera też reguły GeoMeta najlepiej pasujące do widoków z rundy, reguły ogólne zauważone na zrzutach (pismo, kolor linii, krajobraz) i porównanie z krajem, z którym model pomylił poprawny.
+- **Darmowy** — model StreetCLIP działa na twoim komputerze (karta NVIDIA lub procesor), nic nie kosztuje i żadne zdjęcia nie są wysyłane. Po rundzie asystent pokazuje, co typował model na widokach z rundy, i wskazówki z bazy GeoMeta dla tego kraju. Podpowiedzi na żywo (F9 włącza, F8 analizuje) działają też w tym trybie: model podaje 3 najbardziej prawdopodobne kraje, pasujące reguły GeoMeta i orientacyjny region. Gdy na ekranie są paski życia pojedynku (Duels), podpowiedzi są blokowane. Skróty ustawiasz w ⚙: każdej akcji (analiza, podpowiedzi, koniec rundy) możesz przypisać klawisz albo przycisk myszy (boczne i środkowy). Małe napisy są powiększane i czytane ponownie, a nazwa miasta odczytana nawet z jedną błędną literą wskazuje kraj i region. Każda lekcja zapisuje widoki z poprawnym krajem; od 100 rund asystent sam sprawdza, czy uczenie na twoich rundach poprawia trafność, i włącza je tylko wtedy, gdy pomaga. W okienku jest mapa: typowane kraje są zielone (od najmocniejszego), typowany region ma pomarańczową kropkę, a miasta odczytane z napisów czerwoną. Model analizuje cały widok i trzy jego fragmenty, a napisy z widoku (bez interfejsu gry) są czytane i dopasowywane do reguł: charakterystyczne litery, słowa, domeny i nazwy miast. Asystent sam wykrywa ekran wyniku rundy (fioletowy pasek i mapa) i od razu otwiera okienko z pytaniem o kraj — F10 jest potrzebne tylko, gdy tego nie zrobi. F10 możesz naciskać dowolnie wiele razy w jednej grze, także kilka razy w tej samej rundzie. Model typuje też region w kraju (województwo, stan, prowincja) i dobiera pasujące wskazówki regionalne — typy regionów są orientacyjne, zwykle z niską pewnością. Lekcja zawiera też reguły GeoMeta najlepiej pasujące do widoków z rundy, reguły ogólne zauważone na zrzutach (pismo, kolor linii, krajobraz) i porównanie z krajem, z którym model pomylił poprawny.
 - **Claude** — płatny: sam odczytuje wynik rundy, opisuje konkretnie, co było widać, i daje podpowiedzi w treningu.
+
+Co nowego w trybie darmowym:
+
+- **Poprawny kraj sam z mapy wyniku** — asystent znajduje pinezkę, czyta nazwy miast i krajów na mapie i wylicza miejsce. Gdy jest pewny, lekcja pojawia się sama; gdy nie, otwiera okienko z wpisanym krajem (Enter potwierdza). Można to wyłączyć w ⚙.
+- **Twoja odległość** (z paska wyniku, „… km”) trafia do historii; runda liczy się jako udana do 250 km.
+- **Suwak w ⚙**: co ile sekund robić zrzut (1–10 s). Asystent pamięta do 30 różnych widoków z rundy i analizuje 4–6 najbardziej różniących się.
+- **Półkula**: gdy widać słońce i kompas, kraje z drugiej półkuli (poza tropikami) dostają połowę wagi.
+- **Samochód Google**: dół zrzutu jest porównywany z regułami o samochodzie (kolor, relingi, antena, pickup).
+- **Kompaktowy widok** w trakcie rundy (belka z 3 typami i mapa); pełna lekcja po rundzie. Przycisk ↕ przełącza widok.
+- Okienko pamięta położenie i rozmiar.
 
 Tryb darmowy wymaga Pythona (wersja .exe go nie zawiera, bo model i biblioteki ważą kilka GB):
 
 1. Zainstaluj Pythona 3.12 z python.org (zaznacz „Add python.exe to PATH”).
-2. Uruchom `zainstaluj_darmowy.bat` (jednorazowo, pobiera ok. 3 GB bibliotek).
+2. Uruchom `zainstaluj_darmowy.bat` (jednorazowo, pobiera ok. 3 GB bibliotek do folderu `biblioteki`).
 3. Uruchamiaj asystenta przez `uruchom.bat`. Przy pierwszej rundzie pobierze się model (~1,7 GB).
 
-W teście na 45 zdjęciach krajobrazów model trafił kraj w 56% przypadków, a w 82% poprawny kraj był w pierwszej trójce. Na zbliżeniach pojedynczych znaków czy słupków radzi sobie słabo.
+**Wszystko w jednym folderze:** rundy i ustawienia są w `dane`, modele w `modele`, biblioteki w `biblioteki` — obok programu. Cały folder możesz przenieść na inny dysk. Przy pierwszym uruchomieniu `uruchom.bat` sam przenosi stare dane i modele z dysku C: (`przenies_dane.bat`).
 
 ## Koszt
 
@@ -49,7 +59,7 @@ Przykład: 50 rund dziennie z F10 na Opusie to ok. 5–7 zł, na Haiku kilkadzie
 3. **📊** w okienku otwiera raport ze wszystkimi rundami (zdjęcia, lekcje, najczęściej mylone kraje).
 4. W treningu możesz włączyć **F9** i używać **F8** jako podpowiedzi.
 
-Dane lokalne: `%APPDATA%\GeoMetaAsystent\` (ustawienia, historia, zrzuty, raport).
+Dane lokalne: folder `dane` obok programu (przy uruchamianiu przez `uruchom.bat`) albo `%APPDATA%\GeoMetaAsystent\` (wersja .exe).
 
 ## Prywatna synchronizacja ze stroną (opcjonalnie)
 

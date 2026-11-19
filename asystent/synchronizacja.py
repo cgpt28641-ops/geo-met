@@ -37,5 +37,6 @@ def _miniatura(nazwa: str) -> str:
 
 def wyslij_runde(cfg: dict, wpis: dict) -> dict:
     dane = {k: v for k, v in wpis.items() if k != "pliki"}
+    dane["trafiony_kraj"] = silnik.runda_udana(wpis)
     dane["obrazy"] = [_miniatura(p) for p in wpis.get("pliki", [])]
     return _zapytanie(cfg, "/api/rundy", dane)

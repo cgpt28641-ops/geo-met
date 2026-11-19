@@ -108,6 +108,27 @@ def _uprosc(t: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFD", t.lower().replace("ł", "l").replace("ø", "o").replace("đ", "d")) if unicodedata.category(c) != "Mn")
 
 
+def miasta() -> dict:
+    """Lista miast: uproszczona nazwa → [nazwa, kod kraju, szerokość, długość]."""
+    if "miasta" not in _stan:
+        _stan["miasta"] = json.loads((silnik.katalog_zasobow() / "miasta.json").read_text(encoding="utf-8"))
+        wg = {}
+        for klucz, m in _stan["miasta"].items():
+            wg.setdefault(m[1], []).append(klucz)
+        _stan["miasta_wg_kraju"] = wg
+    return _stan["miasta"]
+
+
+def czytnik():
+    """Wspólny program do czytania napisów (ładowany przy pierwszym użyciu)."""
+    if "ocr" not in _stan:
+        import easyocr
+        import torch
+        _stan["ocr"] = easyocr.Reader(["en", "pl", "cs", "sk", "hu", "ro", "tr", "es", "pt", "fr", "de", "lt", "lv", "et", "da", "no", "sv", "is", "it", "nl"],
+                                      gpu=torch.cuda.is_available(), verbose=False)
+    return _stan["ocr"]
+
+
 def czytaj_napisy(obrazy: list, kandydaci: list | None = None) -> list[dict]:
     """Odczytuje napisy z widoku (bez interfejsu gry) i dopasowuje do nich reguły. Wymaga biblioteki easyocr.
 
@@ -120,19 +141,9 @@ def czytaj_napisy(obrazy: list, kandydaci: list | None = None) -> list[dict]:
 
     import numpy as np
     from PIL import Image
-    if "ocr" not in _stan:
-        import easyocr
-        import torch
-        _stan["ocr"] = easyocr.Reader(["en", "pl", "cs", "sk", "hu", "ro", "tr", "es", "pt", "fr", "de", "lt", "lv", "et", "da", "no", "sv", "is", "it", "nl"],
-                                      gpu=torch.cuda.is_available(), verbose=False)
-    ocr = _stan["ocr"]
+    ocr = czytnik()
     domeny = {k["domain"].lstrip("."): k["id"] for k in kraje() if k.get("domain")}
-    if "miasta" not in _stan:
-        _stan["miasta"] = json.loads((silnik.katalog_zasobow() / "miasta.json").read_text(encoding="utf-8"))
-        wg = {}
-        for klucz, m in _stan["miasta"].items():
-            wg.setdefault(m[1], []).append(klucz)
-        _stan["miasta_wg_kraju"] = wg
+    miasta()
     wynik, widziane = [], set()
     for img in obrazy:
         w, h = img.size
@@ -317,7 +328,7 @@ def typuj(obrazy: list, ile: int = 5, uzyj_napisow: bool = True) -> list[dict]:
             p = p / p.sum()
     except Exception:
         pass
-    napisy = czytaj_napisy(obrazy[-1:], [lista[i]["id"] for i in p.topk(6).indices.tolist()]) if uzyj_napisow else []
+    napisy = czytaj_napisy(obrazy[-3:], [lista[i]["id"] for i in p.topk(6).indices.tolist()]) if uzyj_napisow else []
     if napisy:
         for n in napisy:  # reguła z napisu podbija pasujące kraje (miasto najmocniej)
             for i, k in enumerate(lista):
@@ -325,8 +336,189 @@ def typuj(obrazy: list, ile: int = 5, uzyj_napisow: bool = True) -> list[dict]:
                     p[i] = p[i] * (8 if n.get("miasto") else 3) + 0.02
         p = p / p.sum()
     _stan["ostatnie_napisy"] = napisy
+    dodatki = []
+    try:  # półkula ze słońca i kompasu: kraje z drugiej półkuli (poza tropikami) dostają połowę wagi
+        pk = polkula(obrazy) if uzyj_napisow else None
+        if pk:
+            for i, k in enumerate(lista):
+                sz = _szerokosc(k["id"])
+                if sz is not None and ((pk["polkula"] == "N" and sz < -23.5) or (pk["polkula"] == "S" and sz > 23.5)):
+                    p[i] = p[i] * 0.5
+            p = p / p.sum()
+            dodatki.append(pk["opis"])
+    except Exception:
+        pass
+    try:  # samochód Google widoczny na dole zrzutu
+        auto = samochod(obrazy)
+        for a in auto:
+            for i, k in enumerate(lista):
+                if k["id"] == a["kod"]:
+                    p[i] = p[i] * WAGA_AUTA
+            dodatki.append(f"Samochód Google pasuje do: {a['kraj']} — {a['regula']}")
+        if auto:
+            p = p / p.sum()
+    except Exception:
+        pass
+    _stan["ostatnie_dodatki"] = dodatki
     top = p.topk(ile)
     return [{"kod": lista[i]["id"], "kraj": lista[i]["pl"], "pewnosc": round(float(v) * 100)} for v, i in zip(top.values, top.indices)]
+
+
+def ostatnie_dodatki() -> list[str]:
+    """Opisy dodatkowych reguł (półkula, samochód Google) z ostatniego typowania."""
+    return _stan.get("ostatnie_dodatki", [])
+
+
+def _szerokosc(kod: str):
+    """Szerokość geograficzna środka kraju (do reguły półkuli)."""
+    pam = _stan.setdefault("szer", {})
+    if kod not in pam:
+        try:
+            import wynik_mapa
+            sr = wynik_mapa._srodek_kraju(kod)
+            pam[kod] = sr[1] if sr else None
+        except Exception:
+            pam[kod] = None
+    return pam[kod]
+
+
+KIERUNKI = {"N": 0, "NE": 45, "E": 90, "SE": 135, "S": 180, "SW": 225, "W": 270, "NW": 315}
+
+
+def kompas(img):
+    """Kierunek patrzenia (0 = północ, 90 = wschód) odczytany z paska kompasu u góry ekranu; None, gdy się nie da."""
+    if not napisy_dostepne():
+        return None
+    import numpy as np
+    w, h = img.size
+    x0, x1 = int(w * 0.42), int(w * 0.58)
+    wyc = img.convert("RGB").crop((x0, int(h * 0.01), x1, int(h * 0.10)))
+    wyc = wyc.resize((wyc.width * 3, wyc.height * 3))
+    litery = []
+    for ramka, tekst, pewn in czytnik().readtext(np.array(wyc), allowlist="NESW"):
+        t = tekst.strip().upper()
+        if t in KIERUNKI and pewn > 0.3:
+            litery.append((sum(pt[0] for pt in ramka) / 4 / 3 + x0, t))
+    if not litery:
+        return None
+    srodek = w / 2
+    co45 = w * 0.0573   # odstęp między sąsiednimi kierunkami na pasku
+    litery.sort()
+    for (xa, a), (xb, b) in zip(litery, litery[1:]):
+        if (KIERUNKI[b] - KIERUNKI[a]) % 360 == 45 and xb - xa > w * 0.03:
+            co45 = xb - xa
+            break
+    x, t = min(litery, key=lambda l: abs(l[0] - srodek))
+    return (KIERUNKI[t] + (srodek - x) / co45 * 45) % 360
+
+
+def slonce(img):
+    """Położenie tarczy słońca na zrzucie (ułamek szerokości, 0–1) albo None. Celowo ostrożne: tylko zwarta, okrągła, prześwietlona plama na niebie."""
+    try:
+        import cv2
+        import numpy as np
+    except Exception:
+        return None
+    w, h = img.size
+    m = img.convert("RGB").crop((0, int(h * 0.10), w, int(h * 0.62))).resize((480, 140))
+    a = np.asarray(m).astype(np.int16)
+    jasne = (a.min(axis=2) >= 250).astype(np.uint8)
+    if jasne.mean() > 0.12:      # całe niebo prześwietlone (chmury, mgła) — nie da się wskazać słońca
+        return None
+    n, _, st, sr = cv2.connectedComponentsWithStats(jasne, connectivity=8)
+    najl = None
+    for i in range(1, n):
+        x, y, bw, bh, pole = st[i]
+        if not (25 <= pole <= 1500) or not (0.6 <= bw / bh <= 1.7) or pole / (bw * bh) < 0.6:
+            continue
+        # otoczenie plamy musi być niebem: jasne i niebieskawe lub szare, bez ciemnych przedmiotów
+        mx, my = max(4, bw), max(4, bh)
+        ot = a[max(0, y - my):y + bh + my, max(0, x - mx):x + bw + mx].reshape(-1, 3)
+        ot = ot[ot.min(axis=1) < 250]
+        if len(ot) < 20:
+            continue
+        r, g, b = ot.mean(axis=0)
+        if ot.mean() < 150 or b < r - 12 or (ot.max(axis=1) - ot.min(axis=1)).mean() > 70:
+            continue
+        if najl is None or pole > najl[0]:
+            najl = (pole, sr[i][0] / 480)
+    return najl[1] if najl else None
+
+
+def polkula(obrazy: list):
+    """Półkula ze słońca i kompasu: słońce po stronie południowej = półkula północna (i odwrotnie)."""
+    glosy = []
+    for img in obrazy:
+        x = slonce(img)
+        if x is None:
+            continue
+        kier = kompas(img)
+        if kier is None:
+            continue
+        azymut = (kier + (x - 0.5) * 100) % 360     # pole widzenia ok. 100°
+        if 120 <= azymut <= 240:
+            glosy.append("N")
+        elif azymut >= 300 or azymut <= 60:
+            glosy.append("S")
+    if not glosy or len(set(glosy)) > 1:
+        return None
+    if glosy[0] == "N":
+        return {"polkula": "N", "opis": "Słońce widać po stronie południowej → półkula północna (kraje dalekiego południa dostały mniejszą wagę)."}
+    return {"polkula": "S", "opis": "Słońce widać po stronie północnej → półkula południowa (kraje dalekiej północy dostały mniejszą wagę)."}
+
+
+WAGA_AUTA = 1.0       # o ile podbić kraj pasujący do samochodu Google (1.0 = tylko informacja; ustawione po teście)
+PROG_AUTA = 0.6
+SLOWA_AUTA = ("google car", "roof rack", "antenna", "snorkel", "pickup", "truck", "car is", "car was", "black car", "white car", "blue car", "red car",
+              "small cam", "blur", "follow car", "escort", "trekker", "bars", "side mirror", "tape")
+
+
+def _reguly_auta():
+    """Reguły krajów opisujące samochód Google (z poradników), jako opisy dla modelu."""
+    if "ra" not in _stan:
+        wpisy, emb = _reguly_krajow()
+        idx = [i for i, w in enumerate(wpisy) if any(sl in w[1].lower() for sl in ("google car", "roof rack", "snorkel", "pickup truck", "black car", "white car", "follow car", "escort"))
+               or ("car" in w[1].lower() and any(sl in w[1].lower() for sl in ("antenna", "blur", "tape", "bars", "mirror")))]
+        torch, model, proc = _stan["torch"], _stan["model"], _stan["proc"]
+        with torch.no_grad():
+            wej = proc(text=["a road surface seen from above, with no vehicle visible", "a blurred patch at the bottom of a street view photo"],
+                       return_tensors="pt", padding=True).to(_stan["urz"])
+            t = model.text_projection(model.text_model(**wej).pooler_output)
+            t = t / t.norm(dim=-1, keepdim=True)
+        _stan["ra"] = (idx, torch.cat([emb[idx], t]))
+    return _stan["ra"]
+
+
+def samochod(obrazy: list) -> list[dict]:
+    """Szuka na dole zrzutów samochodu Google i dopasowuje go do reguł krajów. Zwraca najwyżej 2 kraje."""
+    idx, emb = _reguly_auta()
+    if not idx or not obrazy:
+        return []
+    torch, model, proc = _stan["torch"], _stan["model"], _stan["proc"]
+    wpisy = _reguly_krajow()[0]
+    with torch.no_grad():
+        suma = 0
+        for img in obrazy[-3:]:
+            w, h = img.size
+            dol = img.convert("RGB").crop((int(w * 0.25), int(h * 0.72), int(w * 0.75), int(h * 0.97)))
+            wej = proc(images=dol, return_tensors="pt").to(_stan["urz"])
+            o = model.visual_projection(model.vision_model(**wej).pooler_output)
+            suma = suma + (100 * (o / o.norm(dim=-1, keepdim=True)) @ emb.T).softmax(-1)[0]
+        pr = (suma / len(obrazy[-3:])).cpu()
+    # prawdopodobieństwo na kraj (suma jego reguł o samochodzie); dwie ostatnie pozycje to „brak samochodu”
+    wg_kraju: dict = {}
+    for j, i in enumerate(idx):
+        kod = wpisy[i][0]
+        v = float(pr[j])
+        e = wg_kraju.setdefault(kod, [0.0, 0.0, ""])
+        e[0] += v
+        if v > e[1]:
+            e[1], e[2] = v, wpisy[i][2]
+    out = []
+    for kod, (lacznie, _, regula) in sorted(wg_kraju.items(), key=lambda x: -x[1][0])[:2]:
+        if lacznie >= PROG_AUTA and kraj(kod):
+            out.append({"kod": kod, "kraj": kraj(kod)["pl"], "regula": regula[:160], "pewnosc": round(lacznie * 100)})
+    return out
 
 
 KATEGORIE = {"kamera": "Samochód Google", "tablice": "Tablice", "slupki": "Słupki", "linie": "Linie", "znaki": "Znaki",
@@ -470,13 +662,27 @@ def roznice(a: dict, b: dict, ile: int = 4) -> list[str]:
     return out[:ile]
 
 
-def lekcja(widoki: list, poprawny_kod: str, trafiony: bool) -> dict:
-    """Lekcja po rundzie: typy modelu, reguły sprawdzone na zrzutach i wskazówki GeoMeta dla poprawnego kraju."""
-    k = kraj(poprawny_kod) or {"pl": poprawny_kod, "summary": "", "tips": [], "clues": {}}
-    ost = widoki[-3:]
-    typy = typuj(ost, 3) if ost else []
+def _najblizsze_miasto(kod: str, lat: float, lon: float):
     try:
-        zapisz_przyklad(ost, poprawny_kod)
+        lista = [m for m in miasta().values() if m[1] == kod]
+        m = min(lista, key=lambda m: (m[2] - lat) ** 2 + ((m[3] - lon) * 0.7) ** 2) if lista else None
+        return {"nazwa": m[0]} if m else None
+    except Exception:
+        return None
+
+
+def lekcja(widoki: list, poprawny_kod: str, trafiony: bool | None, odczyt: dict | None = None, typy: list | None = None) -> dict:
+    """Lekcja po rundzie: typy modelu, reguły sprawdzone na zrzutach i wskazówki GeoMeta dla poprawnego kraju.
+
+    odczyt — wynik wynik_mapa.odczytaj (miejsce i odległość gracza z ekranu wyniku); typy — typy modelu policzone wcześniej.
+    """
+    k = kraj(poprawny_kod) or {"pl": poprawny_kod, "summary": "", "tips": [], "clues": {}}
+    ost = widoki
+    if typy is None:
+        typy = typuj(ost, 3) if ost else []
+    dodatki, napisy = ostatnie_dodatki(), ostatnie_napisy()
+    try:
+        zapisz_przyklad(ost[-3:], poprawny_kod)
     except Exception:
         pass
     widziane = sprawdz_reguly(ost) if ost else []
@@ -490,16 +696,36 @@ def lekcja(widoki: list, poprawny_kod: str, trafiony: bool) -> dict:
     pomylony = kraj(typy[0]["kod"]) if typy and poz != 0 else None
     wskazowki = {KATEGORIE[kat]: lst[:3] for kat, lst in k.get("clues", {}).items() if lst}
     pierwsza = next((lst[0] for lst in k.get("clues", {}).values() if lst), "")
+    odl = odczyt.get("odleglosc_km") if odczyt else None
+    regiony = typuj_region(ost, poprawny_kod)
+    miejsce, punkt = "", None
+    if odczyt and odczyt.get("dokladne") and odczyt.get("lat") is not None:
+        punkt = [round(odczyt["lat"], 3), round(odczyt["lon"], 3)]
+        m = _najblizsze_miasto(poprawny_kod, odczyt["lat"], odczyt["lon"])
+        lista = _stan.get("regiony", {}).get(poprawny_kod) or []
+        if lista:  # region z mapy wyniku jest pewniejszy niż typ modelu
+            r = min(lista, key=lambda r: (r[2] - odczyt["lat"]) ** 2 + (r[3] - odczyt["lon"]) ** 2)
+            typ_modelu = regiony[0]["region"].split(" (")[0] if regiony else ""
+            regiony = [{"region": f"{r[1]} (z mapy wyniku)", "pewnosc": 95, "lat": r[2], "lon": r[3]}]
+            if typ_modelu and typ_modelu != r[1]:
+                ocena += f" Region: model typował {typ_modelu}, a było to {r[1]}."
+            miejsce = r[1]
+        if m:
+            miejsce = f"okolice: {m['nazwa']}" + (f", {miejsce}" if miejsce else "")
+    if odl is not None:
+        strzal = f"{odl} km od celu"
+    else:
+        strzal = "" if trafiony is None else ("trafiony" if trafiony else "inny kraj")
     return {
-        "tryb_rankingowy": False, "poprawny_kod": poprawny_kod, "poprawny_kraj": k["pl"], "miejsce": "",
-        "twoj_strzal": "trafiony" if trafiony else "inny kraj", "trafiony_kraj": trafiony,
+        "tryb_rankingowy": False, "poprawny_kod": poprawny_kod, "poprawny_kraj": k["pl"], "miejsce": miejsce, "punkt": punkt,
+        "twoj_strzal": strzal, "trafiony_kraj": trafiony, "odleglosc_km": odl,
         "lekcja": f"{k['summary']} {ocena}", "przeoczone": k["tips"][:3],
         "zagadka": pierwsza, "model": typy, "widziane": widziane, "wskazowki": wskazowki,
         "pomylony": pomylony["pl"] if pomylony else "", "roznice": roznice(k, pomylony) if pomylony else [],
-        "napisy": ostatnie_napisy(),
+        "napisy": napisy, "dodatki": dodatki,
         "uczenie": opis_uczenia(),
         "pasujace": pasujace_reguly(ost, poprawny_kod),
-        "regiony": typuj_region(ost, poprawny_kod),
+        "regiony": regiony,
         "pasujace_regionalne": pasujace_reguly(ost, poprawny_kod, 3, regionalne=True),
         "pasujace_pomylony": pasujace_reguly(ost, pomylony["id"], 2) if pomylony else [],
     }

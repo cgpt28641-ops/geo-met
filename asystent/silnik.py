@@ -22,8 +22,9 @@ from PIL import Image
 
 def katalog_aplikacji() -> Path:
     """Folder z danymi użytkownika (ustawienia, historia)."""
+    wlasny = os.environ.get("GEOMETA_DANE")  # ustawiane przez uruchom.bat: dane obok programu, na dowolnym dysku
     base = os.environ.get("APPDATA") or str(Path.home() / ".config")
-    p = Path(base) / "GeoMetaAsystent"
+    p = Path(wlasny) if wlasny else Path(base) / "GeoMetaAsystent"
     p.mkdir(parents=True, exist_ok=True)
     (p / "historia").mkdir(exist_ok=True)
     return p
@@ -47,7 +48,10 @@ DOMYSLNE = {
     "monitor": 1,
     "podpowiedzi": False,      # tryb podpowiedzi (tylko gra pojedyncza / trening)
     "auto_zrzuty": True,       # lokalne zrzuty co kilka sekund (darmowe) — do nauki po rundzie
-    "co_ile_s": 4,
+    "co_ile_s": 2,
+    "auto_kraj": True,         # poprawny kraj odczytywany z mapy wyniku
+    "kompakt": True,           # mała belka z typami w trakcie rundy
+    "okno": "",                # zapamiętane położenie i rozmiar okienka
     "auto_koniec": True,       # tryb darmowy: sam wykrywa ekran wyniku i otwiera lekcję
     "skrot_analiza": "f8",
     "skrot_podpowiedzi": "f9",
@@ -118,6 +122,29 @@ def czy_pojedynek(img: Image.Image) -> bool:
             najlepszy = max(najlepszy, sum(zielony(*px[x, y]) for x in range(x0, x1)) / (x1 - x0))
         return najlepszy
     return pasek(14, 76) > 0.55 and pasek(244, 306) > 0.55
+
+
+def podpis_klatki(img: Image.Image) -> bytes:
+    """Mały odcisk obrazu (32x18, szarość) do szybkiego porównywania zrzutów."""
+    w, h = img.size
+    return img.crop((0, int(h * 0.12), w, int(h * 0.88))).convert("L").resize((32, 18)).tobytes()
+
+
+def roznica_klatek(a: bytes, b: bytes) -> float:
+    """Średnia różnica jasności między dwoma odciskami (0–255)."""
+    return sum(abs(x - y) for x, y in zip(a, b)) / len(a)
+
+
+def wybierz_rozne(klatki: list, ile: int) -> list:
+    """Z listy (obraz, odcisk) wybiera najbardziej różniące się widoki; ostatni jest zawsze wśród nich."""
+    if len(klatki) <= ile:
+        return [k[0] for k in klatki]
+    wybrane = [len(klatki) - 1]
+    while len(wybrane) < ile:
+        najlepszy = max((i for i in range(len(klatki)) if i not in wybrane),
+                        key=lambda i: min(roznica_klatek(klatki[i][1], klatki[j][1]) for j in wybrane))
+        wybrane.append(najlepszy)
+    return [klatki[i][0] for i in sorted(wybrane)]
 
 
 def obraz_do_base64(img: Image.Image, max_bok: int = 1568, jakosc: int = 82) -> str:
@@ -285,6 +312,13 @@ class Silnik:
 
 # ───────────────────────── historia i raport ─────────────────────────
 
+def runda_udana(w: dict) -> bool:
+    """Czy runda poszła dobrze: trafiony kraj, a gdy tego nie wiadomo — strzał bliżej niż 250 km."""
+    if w.get("trafiony_kraj") is not None:
+        return bool(w.get("trafiony_kraj"))
+    return w.get("odleglosc_km") is not None and w["odleglosc_km"] <= 250
+
+
 def zapisz_runde(lekcja: dict, widoki: list[Image.Image], wynik: Image.Image) -> dict:
     kat = katalog_aplikacji() / "historia"
     znacznik = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -315,16 +349,16 @@ def statystyki(hist: list | None = None) -> dict:
     for w in hist:
         k = kraje.setdefault(w.get("poprawny_kod", "?"), {"kraj": w.get("poprawny_kraj", "?"), "rundy": 0, "trafione": 0})
         k["rundy"] += 1
-        k["trafione"] += 1 if w.get("trafiony_kraj") else 0
+        k["trafione"] += 1 if runda_udana(w) else 0
     najgorsze = sorted(kraje.items(), key=lambda kv: (kv[1]["trafione"] / kv[1]["rundy"], -kv[1]["rundy"]))
-    return {"rundy": len(hist), "trafione": sum(1 for w in hist if w.get("trafiony_kraj")), "kraje": kraje, "najgorsze": najgorsze[:8]}
+    return {"rundy": len(hist), "trafione": sum(1 for w in hist if runda_udana(w)), "kraje": kraje, "najgorsze": najgorsze[:8]}
 
 
 def eksport_dla_geometa() -> Path:
     """Plik do zaimportowania na stronie GeoMeta (Nauka → Importuj z Asystenta): rundy z nietrafionym krajem."""
     hist = wczytaj_historie()
     bledy = [{"t": "clue", "c": w["poprawny_kod"].lower(), "k": "inne", "v": w["zagadka"]}
-             for w in hist if not w.get("trafiony_kraj") and w.get("zagadka") and len(w.get("poprawny_kod", "")) == 2]
+             for w in hist if not runda_udana(w) and w.get("zagadka") and len(w.get("poprawny_kod", "")) == 2]
     p = katalog_aplikacji() / "geometa_bledy.json"
     p.write_text(json.dumps({"zrodlo": "GeoMeta Asystent", "bledy": bledy}, ensure_ascii=False, indent=1), encoding="utf-8")
     return p
@@ -339,9 +373,9 @@ def raport_html() -> Path:
         imgs = "".join(f'<a href="historia/{e(f)}" target="_blank"><img src="historia/{e(f)}"></a>' for f in w.get("pliki", []))
         flaga = f'<img class="flag" src="https://flagcdn.com/w40/{e(w.get("poprawny_kod", "").lower())}.png">'
         przeocz = "".join(f"<li>{e(x)}</li>" for x in w.get("przeoczone", []))
-        wiersze.append(f"""<div class="r {'ok' if w.get('trafiony_kraj') else 'zle'}">
+        wiersze.append(f"""<div class="r {'ok' if runda_udana(w) else 'zle'}">
           <div class="h">{flaga}<b>{e(w.get('poprawny_kraj', '?'))}</b> {e(w.get('miejsce', ''))}
-          <span>{'✅ trafiony kraj' if w.get('trafiony_kraj') else '❌ twój strzał: ' + e(w.get('twoj_strzal', '?'))}</span>
+          <span>{('✅ ' if runda_udana(w) else '❌ ') + (f"{w['odleglosc_km']} km od celu" if w.get('odleglosc_km') is not None else ('trafiony kraj' if w.get('trafiony_kraj') else 'twój strzał: ' + e(w.get('twoj_strzal', '?'))))}</span>
           <small>{e(w.get('czas', ''))}</small></div>
           <div class="imgs">{imgs}</div><p>{e(w.get('lekcja', ''))}</p><ul>{przeocz}</ul></div>""")
     najg = "".join(f"<li>{e(v['kraj'])}: {v['trafione']}/{v['rundy']}</li>" for _, v in st["najgorsze"])
