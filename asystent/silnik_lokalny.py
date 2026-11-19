@@ -351,12 +351,12 @@ def typuj(obrazy: list, ile: int = 5, uzyj_napisow: bool = True) -> list[dict]:
     try:  # samochód Google widoczny na dole zrzutu
         auto = samochod(obrazy)
         for a in auto:
-            for i, k in enumerate(lista):
-                if k["id"] == a["kod"]:
-                    p[i] = p[i] * WAGA_AUTA
-            dodatki.append(f"Samochód Google pasuje do: {a['kraj']} — {a['regula']}")
-        if auto:
-            p = p / p.sum()
+            if WAGA_AUTA != 1.0:
+                for i, k in enumerate(lista):
+                    if k["id"] in a["kody"]:
+                        p[i] = p[i] * WAGA_AUTA
+                p = p / p.sum()
+            dodatki.append(f"Na dole zrzutu widać: {a['widac']} ({a['pewnosc']}%). Takie auto jeździło m.in. w: {a['kraje']}.")
     except Exception:
         pass
     _stan["ostatnie_dodatki"] = dodatki
@@ -413,7 +413,11 @@ def kompas(img):
 
 
 def slonce(img):
-    """Położenie tarczy słońca na zrzucie (ułamek szerokości, 0–1) albo None. Celowo ostrożne: tylko zwarta, okrągła, prześwietlona plama na niebie."""
+    """Położenie tarczy słońca na zrzucie (ułamek szerokości, 0–1) albo None.
+
+    Celowo ostrożne: szukamy małej, okrągłej, prześwietlonej plamy z równą poświatą dookoła, która słabnie z odległością.
+    Białe chmury i ściany mają ostre, nierówne brzegi, więc odpadają.
+    """
     try:
         import cv2
         import numpy as np
@@ -421,27 +425,38 @@ def slonce(img):
         return None
     w, h = img.size
     m = img.convert("RGB").crop((0, int(h * 0.10), w, int(h * 0.62))).resize((480, 140))
-    a = np.asarray(m).astype(np.int16)
-    jasne = (a.min(axis=2) >= 250).astype(np.uint8)
-    if jasne.mean() > 0.12:      # całe niebo prześwietlone (chmury, mgła) — nie da się wskazać słońca
+    a = np.asarray(m).astype(np.float32)
+    jasne = (a.min(axis=2) >= 252).astype(np.uint8)
+    if jasne.mean() > 0.10:      # duża część nieba prześwietlona (chmury, mgła) — nie da się wskazać słońca
         return None
+    lum = a.mean(axis=2)
+    yy, xx = np.mgrid[0:140, 0:480]
     n, _, st, sr = cv2.connectedComponentsWithStats(jasne, connectivity=8)
     najl = None
     for i in range(1, n):
         x, y, bw, bh, pole = st[i]
-        if not (25 <= pole <= 1500) or not (0.6 <= bw / bh <= 1.7) or pole / (bw * bh) < 0.6:
+        if not (12 <= pole <= 1200) or not (0.65 <= bw / bh <= 1.55) or pole / (bw * bh) < 0.65:
             continue
-        # otoczenie plamy musi być niebem: jasne i niebieskawe lub szare, bez ciemnych przedmiotów
-        mx, my = max(4, bw), max(4, bh)
-        ot = a[max(0, y - my):y + bh + my, max(0, x - mx):x + bw + mx].reshape(-1, 3)
-        ot = ot[ot.min(axis=1) < 250]
-        if len(ot) < 20:
+        r = max(2.5, (pole / 3.14159) ** 0.5)
+        cx, cy = sr[i]
+        if cy - 2.5 * r < 0 or cx - 4 * r < 0 or cx + 4 * r > 480:
             continue
-        r, g, b = ot.mean(axis=0)
-        if ot.mean() < 150 or b < r - 12 or (ot.max(axis=1) - ot.min(axis=1)).mean() > 70:
+        d = np.hypot(xx - cx, yy - cy)
+        kat = np.arctan2(yy - cy, xx - cx)
+        gora = yy <= cy + r          # poświatę oceniamy na niebie, czyli obok i nad tarczą
+        p1, p2, p3 = [(d > r * lo) & (d <= r * hi) & gora for lo, hi in ((1.15, 1.8), (1.8, 2.8), (2.8, 4.0))]
+        if p1.sum() < 6 or p2.sum() < 10 or p3.sum() < 10:
+            continue
+        l1, l2, l3 = lum[p1].mean(), lum[p2].mean(), lum[p3].mean()
+        if not (l1 >= 205 and l1 > l2 + 3 and l2 > l3 + 3):
+            continue
+        # poświata musi być równa we wszystkich kierunkach (chmura ma jasną jedną stronę i niebieską drugą)
+        sektory = [lum[p2 & (kat >= k0) & (kat < k0 + 0.7854)] for k0 in (-3.1416, -2.3562, -1.5708, -0.7854)]
+        srednie = [x.mean() for x in sektory if len(x) >= 2]
+        if len(srednie) < 3 or max(srednie) - min(srednie) > 22 or min(srednie) < l3 - 6:
             continue
         if najl is None or pole > najl[0]:
-            najl = (pole, sr[i][0] / 480)
+            najl = (pole, float(cx) / 480)
     return najl[1] if najl else None
 
 
@@ -467,58 +482,45 @@ def polkula(obrazy: list):
     return {"polkula": "S", "opis": "Słońce widać po stronie północnej → półkula południowa (kraje dalekiej północy dostały mniejszą wagę)."}
 
 
-WAGA_AUTA = 1.0       # o ile podbić kraj pasujący do samochodu Google (1.0 = tylko informacja; ustawione po teście)
-PROG_AUTA = 0.6
-SLOWA_AUTA = ("google car", "roof rack", "antenna", "snorkel", "pickup", "truck", "car is", "car was", "black car", "white car", "blue car", "red car",
-              "small cam", "blur", "follow car", "escort", "trekker", "bars", "side mirror", "tape")
-
-
-def _reguly_auta():
-    """Reguły krajów opisujące samochód Google (z poradników), jako opisy dla modelu."""
-    if "ra" not in _stan:
-        wpisy, emb = _reguly_krajow()
-        idx = [i for i, w in enumerate(wpisy) if any(sl in w[1].lower() for sl in ("google car", "roof rack", "snorkel", "pickup truck", "black car", "white car", "follow car", "escort"))
-               or ("car" in w[1].lower() and any(sl in w[1].lower() for sl in ("antenna", "blur", "tape", "bars", "mirror")))]
-        torch, model, proc = _stan["torch"], _stan["model"], _stan["proc"]
-        with torch.no_grad():
-            wej = proc(text=["a road surface seen from above, with no vehicle visible", "a blurred patch at the bottom of a street view photo"],
-                       return_tensors="pt", padding=True).to(_stan["urz"])
-            t = model.text_projection(model.text_model(**wej).pooler_output)
-            t = t / t.norm(dim=-1, keepdim=True)
-        _stan["ra"] = (idx, torch.cat([emb[idx], t]))
-    return _stan["ra"]
+WAGA_AUTA = 1.0       # o ile podbić kraje pasujące do samochodu Google (1.0 = tylko informacja)
+PROG_AUTA = 0.75
+# (opis dla modelu, co widać po polsku, wzorzec szukany we wskazówkach „Samochód Google” krajów); None = nic szczególnego
+AUTA = [
+    ("the hood of a black car at the bottom of a street view photo", "czarny samochód Google", r"czarn\w+ (samoch|aut)"),
+    ("the hood of a white car at the bottom of a street view photo", "biały samochód Google", r"biał\w+ (samoch|aut)"),
+    ("the back of a pickup truck bed at the bottom of a street view photo", "pickup", r"pickup"),
+    ("black roof rack bars of a car at the bottom of a street view photo", "relingi dachowe", r"reling|bagażnik dachow"),
+    ("a road surface with no vehicle visible", None, None),
+    ("a round blurred patch on the road", None, None),
+    ("grass, soil or a sidewalk", None, None),
+]
 
 
 def samochod(obrazy: list) -> list[dict]:
-    """Szuka na dole zrzutów samochodu Google i dopasowuje go do reguł krajów. Zwraca najwyżej 2 kraje."""
-    idx, emb = _reguly_auta()
-    if not idx or not obrazy:
+    """Sprawdza, czy na dole zrzutów widać samochód Google (czarny, biały, pickup, relingi), i podaje kraje z takim autem."""
+    if not obrazy:
         return []
+    import re
+    _zaladuj()
     torch, model, proc = _stan["torch"], _stan["model"], _stan["proc"]
-    wpisy = _reguly_krajow()[0]
     with torch.no_grad():
+        if "auta" not in _stan:
+            wej = proc(text=[x[0] for x in AUTA], return_tensors="pt", padding=True).to(_stan["urz"])
+            t = model.text_projection(model.text_model(**wej).pooler_output)
+            _stan["auta"] = t / t.norm(dim=-1, keepdim=True)
         suma = 0
         for img in obrazy[-3:]:
             w, h = img.size
             dol = img.convert("RGB").crop((int(w * 0.25), int(h * 0.72), int(w * 0.75), int(h * 0.97)))
             wej = proc(images=dol, return_tensors="pt").to(_stan["urz"])
             o = model.visual_projection(model.vision_model(**wej).pooler_output)
-            suma = suma + (100 * (o / o.norm(dim=-1, keepdim=True)) @ emb.T).softmax(-1)[0]
+            suma = suma + (100 * (o / o.norm(dim=-1, keepdim=True)) @ _stan["auta"].T).softmax(-1)[0]
         pr = (suma / len(obrazy[-3:])).cpu()
-    # prawdopodobieństwo na kraj (suma jego reguł o samochodzie); dwie ostatnie pozycje to „brak samochodu”
-    wg_kraju: dict = {}
-    for j, i in enumerate(idx):
-        kod = wpisy[i][0]
-        v = float(pr[j])
-        e = wg_kraju.setdefault(kod, [0.0, 0.0, ""])
-        e[0] += v
-        if v > e[1]:
-            e[1], e[2] = v, wpisy[i][2]
-    out = []
-    for kod, (lacznie, _, regula) in sorted(wg_kraju.items(), key=lambda x: -x[1][0])[:2]:
-        if lacznie >= PROG_AUTA and kraj(kod):
-            out.append({"kod": kod, "kraj": kraj(kod)["pl"], "regula": regula[:160], "pewnosc": round(lacznie * 100)})
-    return out
+    i = int(pr.argmax())
+    if AUTA[i][1] is None or float(pr[i]) < PROG_AUTA:
+        return []
+    pas = [k for k in kraje() if any(re.search(AUTA[i][2], c.lower()) for c in k.get("clues", {}).get("kamera", []))]
+    return [{"widac": AUTA[i][1], "pewnosc": round(float(pr[i]) * 100), "kody": [k["id"] for k in pas], "kraje": ", ".join(k["pl"] for k in pas)}] if pas else []
 
 
 KATEGORIE = {"kamera": "Samochód Google", "tablice": "Tablice", "slupki": "Słupki", "linie": "Linie", "znaki": "Znaki",
