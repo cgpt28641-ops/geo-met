@@ -35,6 +35,8 @@ class Asystent:
         self.ostatnia_analiza: dict | None = None
         self.odkryte = False
         self.zajety = False
+        self.ostatni_ekran = "runda"
+        self.okno_rundy = None
 
         self.root = tk.Tk()
         self.root.title("GeoMeta Asystent")
@@ -119,7 +121,13 @@ class Asystent:
         while True:
             try:
                 if not self.zajety:
-                    self.widoki.append(silnik.zrob_zrzut(self.cfg.get("monitor", 1)))
+                    zrzut = silnik.zrob_zrzut(self.cfg.get("monitor", 1))
+                    ekran = silnik.rodzaj_ekranu(zrzut)
+                    if ekran == "runda":
+                        self.widoki.append(zrzut)   # do nauki trafiają tylko widoki z rundy
+                    elif ekran == "wynik" and self.ostatni_ekran == "runda" and self.lokalny and self.cfg.get("auto_koniec", True) and self.widoki:
+                        self.kolejka.put(("akcja", self.koniec_rundy_lokalnie))
+                    self.ostatni_ekran = ekran
             except Exception:
                 pass
             time.sleep(max(3, int(self.cfg.get("co_ile_s", 8))))
@@ -232,7 +240,7 @@ class Asystent:
 
     def koniec_rundy_lokalnie(self) -> None:
         """Tryb darmowy: pytamy o poprawny kraj, a model lokalny ocenia widoki z rundy."""
-        if self.zajety:
+        if self.zajety or (self.okno_rundy is not None and self.okno_rundy.winfo_exists()):
             return
         widoki = list(self.widoki)
         try:
@@ -241,7 +249,7 @@ class Asystent:
             self.pisz([("Błąd zrzutu ekranu: ", "b"), (str(e), "")])
             return
         lista = sorted(silnik_lokalny.kraje(), key=lambda k: k["pl"])
-        okno = tk.Toplevel(self.root)
+        okno = self.okno_rundy = tk.Toplevel(self.root)
         okno.title("Koniec rundy")
         okno.attributes("-topmost", True)
         okno.geometry("340x190")
@@ -251,7 +259,7 @@ class Asystent:
         zm = tk.StringVar()
         pole = ttk.Combobox(ramka, textvariable=zm, values=[k["pl"] for k in lista])
         pole.pack(fill="x", pady=6)
-        pole.focus_set()
+        okno.after(100, lambda: (okno.lift(), okno.focus_force(), pole.focus_set()))
 
         def filtruj(_=None):
             t = zm.get().lower()

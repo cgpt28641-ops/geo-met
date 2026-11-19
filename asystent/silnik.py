@@ -47,7 +47,8 @@ DOMYSLNE = {
     "monitor": 1,
     "podpowiedzi": False,      # tryb podpowiedzi (tylko gra pojedyncza / trening)
     "auto_zrzuty": True,       # lokalne zrzuty co kilka sekund (darmowe) — do nauki po rundzie
-    "co_ile_s": 8,
+    "co_ile_s": 4,
+    "auto_koniec": True,       # tryb darmowy: sam wykrywa ekran wyniku i otwiera lekcję
     "skrot_analiza": "f8",
     "skrot_podpowiedzi": "f9",
     "skrot_koniec_rundy": "f10",
@@ -81,6 +82,26 @@ def zrob_zrzut(monitor: int = 1) -> Image.Image:
         m = mons[monitor] if 0 < monitor < len(mons) else mons[1]
         shot = sct.grab(m)
         return Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+
+
+def rodzaj_ekranu(img: Image.Image) -> str:
+    """Rozpoznaje po kolorach: 'wynik' (fioletowy pasek u góry + mapa), 'podsumowanie' (cały fioletowy) albo 'runda'."""
+    m = img.convert("RGB").resize((160, 90))
+    px = m.load()
+
+    def fiolet(r, g, b):
+        return r < 90 and g < 70 and 40 < b < 140 and b > r + 10
+
+    def mapa(r, g, b):
+        return (b > 200 and g > 150 and r < 170) or (g > 190 and 130 < r < 190 and b < 190)
+    gora = sum(fiolet(*px[x, y]) for y in range(0, 18) for x in range(160)) / (18 * 160)
+    dol_f = sum(fiolet(*px[x, y]) for y in range(23, 90) for x in range(160)) / (67 * 160)
+    dol_m = sum(mapa(*px[x, y]) for y in range(23, 90) for x in range(160)) / (67 * 160)
+    if gora > 0.6 and dol_m > 0.5:
+        return "wynik"
+    if gora > 0.6 and dol_f > 0.4:
+        return "podsumowanie"
+    return "runda"
 
 
 def obraz_do_base64(img: Image.Image, max_bok: int = 1568, jakosc: int = 82) -> str:
