@@ -115,6 +115,58 @@ def baza_miast():
     return _baza
 
 
+def _odleglosc_z_paska(rgb, czyt):
+    """Zwykła gra: odległość z dolnego paska pod napisem DISTANCE (np. „498 km”). Zwraca kilometry albo None.
+
+    Cyfry są dużo wyższe niż dopisek „km”, więc najpierw oddzielamy je po wysokości znaków i czytamy same cyfry.
+    """
+    import numpy as np
+    from PIL import Image
+    try:
+        w, h = rgb.size
+        x0, y0 = int(w * 0.405), int(h * 0.932)
+        wyc = rgb.crop((x0, y0, int(w * 0.49), int(h * 0.968)))
+        a = np.asarray(wyc).min(axis=2) > 190           # białe znaki na ciemnym tle
+        kolumny = a.any(axis=0)
+        znaki, start = [], None
+        for x, jest in enumerate(list(kolumny) + [False]):
+            if jest and start is None:
+                start = x
+            elif not jest and start is not None:
+                wiersze = np.nonzero(a[:, start:x].any(axis=1))[0]
+                znaki.append((start, x, int(wiersze[-1] - wiersze[0] + 1)))
+                start = None
+        znaki = [z for z in znaki if z[2] >= 5]
+        if not znaki:
+            return None
+        najw = max(z[2] for z in znaki)
+        duze = [z for z in znaki if z[2] >= 0.8 * najw]
+        # liczba to pierwsza zwarta grupa dużych znaków (dalej, po prawej, bywa już kolumna SCORE)
+        grupa = [duze[0]]
+        for z in duze[1:]:
+            przerwa = z[0] - grupa[-1][1]
+            # większa przerwa to koniec liczby (dalej jest „km”), chyba że stoi w niej przecinek tysięcy („7,686”)
+            przecinek = any(grupa[-1][1] <= m[0] and m[1] <= z[0] and m[2] < 0.5 * najw for m in znaki)
+            if przerwa > najw * 0.3 and not (przecinek and przerwa < najw * 0.9):
+                break
+            grupa.append(z)
+        male = [z for z in znaki if z[2] < 0.8 * najw and grupa[-1][1] <= z[0] <= grupa[-1][1] + najw * 3]
+        prawa = grupa[-1][1] + (max(1, (male[0][0] - grupa[-1][1]) // 2) if male else 6)     # nie zahaczamy o literę „k”
+        cyfry = Image.new("RGB", (prawa - grupa[0][0] + 24, wyc.height), (30, 20, 70))
+        cyfry.paste(wyc.crop((max(0, grupa[0][0] - 6), 0, prawa, wyc.height)), (9, 0))
+        cyfry = cyfry.resize((cyfry.width * 4, cyfry.height * 4), Image.LANCZOS)
+        tekst = "".join(t for _, t, _ in czyt.readtext(np.asarray(cyfry), allowlist="0123456789"))
+        szer_jedn = (male[-1][1] - male[0][0]) if male else 0
+        metry = bool(male) and szer_jedn < 1.5 * max(z[2] for z in male)     # samo „m” jest wąskie, „km” szerokie
+        silnik.log(f"dolny pasek (odległość): cyfry {tekst!r} · jednostka {'m' if metry else 'km'} (szerokość {szer_jedn})")
+        if not tekst:
+            return None
+        return round(int(tekst) / 1000) if metry else int(tekst)
+    except Exception:
+        silnik.log("BŁĄD odczytu odległości z dolnego paska", blad=True)
+        return None
+
+
 def odczytaj(img, typy_modelu: list[str] | None = None) -> dict | None:
     """Zwraca {kod, pewny, lat, lon, miasta, odleglosc_km, powod} albo None, gdy nie da się nic ustalić."""
     import numpy as np
@@ -122,10 +174,25 @@ def odczytaj(img, typy_modelu: list[str] | None = None) -> dict | None:
     miasta = baza_miast()
     nazwy_krajow = {silnik_lokalny._uprosc(k["pl"]): k["id"] for k in silnik_lokalny.kraje()}
     w, h = img.size
-    gora = 0.22 if silnik.rodzaj_ekranu(img) == "wynik" else 0.06     # pod fioletowym paskiem wyniku albo mapa na cały ekran
-    odczyty = silnik_lokalny.czytnik().readtext(np.asarray(img.convert("RGB")))
-    silnik.log(f"mapa wyniku: zrzut {w}x{h} · pinezka {pinezka(img)} · odczytane napisy ({len(odczyty)}): " + " | ".join(f"{t} [{int(pole[0][0])},{int(pole[0][1])}]" for pole, t, pw in odczyty[:60])
-               + " · z liczbami na dole: " + " | ".join(f"{t} [{int(pole[0][0])},{int(pole[0][1])}]" for pole, t, pw in odczyty if pole[0][1] > h * 0.8 and re.search(r"\d", t)))
+    pojedynek = silnik.rodzaj_ekranu(img) == "wynik"      # fioletowy pasek u góry; w zwykłej grze mapa jest na cały ekran
+    gora = 0.22 if pojedynek else 0.06
+    pin = pinezka(img)
+    if pin and not (h * gora < pin[1] < h * 0.97 and w * 0.02 < pin[0] < w * 0.98):
+        pin = None
+    rgb = img.convert("RGB")
+    czyt = silnik_lokalny.czytnik()
+    # Czytamy tylko okolicę pinezki (tam są napisy potrzebne do ustalenia miejsca) — to kilka razy szybsze niż cały ekran.
+    if pin:
+        x0, x1 = int(max(0, pin[0] - w * 0.36)), int(min(w, pin[0] + w * 0.36))
+        y0, y1 = int(max(h * gora, pin[1] - h * 0.42)), int(min(h * (1.0 if pojedynek else 0.89), pin[1] + h * 0.42))
+    else:
+        x0, y0, x1, y1 = 0, int(h * gora), w, h
+    odczyty = [([[q[0] + x0, q[1] + y0] for q in pole], t, pw) for pole, t, pw in czyt.readtext(np.asarray(rgb.crop((x0, y0, x1, y1))))]
+    if pojedynek:   # pasek z odległościami („66 km | 146 km”) pod wynikiem rundy
+        px0, py0 = int(w * 0.30), int(h * 0.17)
+        odczyty += [([[q[0] + px0, q[1] + py0] for q in pole], t, pw) for pole, t, pw in czyt.readtext(np.asarray(rgb.crop((px0, py0, int(w * 0.70), int(h * 0.27)))))]
+    silnik.log(f"mapa wyniku: zrzut {w}x{h} · pinezka {pin} · czytany obszar {x0},{y0}–{x1},{y1} · odczytane napisy ({len(odczyty)}): "
+               + " | ".join(f"{t} [{int(pole[0][0])},{int(pole[0][1])}]" for pole, t, pw in odczyty[:60]))
 
     # odległość gracza: pierwszy od lewej napis „… km” w górnej części ekranu (pojedynek) albo w dolnym panelu (zwykła gra)
     km, km_dol = [], []
@@ -139,24 +206,9 @@ def odczytaj(img, typy_modelu: list[str] | None = None) -> dict | None:
         elif pole[0][1] > h * 0.80 and pole[0][0] < w * 0.80:      # prawy dolny róg to podziałka mapy, nie wynik
             km_dol.append((pole[0][0], wartosc))
     odleglosc = min(km)[1] if km else (min(km_dol)[1] if km_dol else None)
-    if odleglosc is None and gora < 0.1:
-        # Zwykła gra: odległość stoi w dolnym pasku, na lewo od środka (np. „954 km”), małą czcionką — czytamy ten kawałek w powiększeniu.
-        try:
-            from PIL import Image
-            wyc = img.convert("RGB").crop((int(w * 0.40), int(h * 0.915), int(w * 0.475), int(h * 0.965)))
-            wyc = wyc.resize((wyc.width * 3, wyc.height * 3), Image.LANCZOS)
-            tekst = " ".join(t for _, t, _ in silnik_lokalny.czytnik().readtext(np.asarray(wyc), allowlist="0123456789,. km"))
-            silnik.log(f"dolny pasek (odległość): {tekst!r}")
-            m = re.search(r"(\d[\d ,.]*)\s*(km|k|m)?", tekst.lower())
-            if m and re.sub(r"\D", "", m.group(1)):
-                liczba = int(re.sub(r"\D", "", m.group(1)))
-                odleglosc = round(liczba / 1000) if m.group(2) == "m" else liczba
-        except Exception:
-            silnik.log("BŁĄD odczytu odległości z dolnego paska", blad=True)
+    if not pojedynek:
+        odleglosc = _odleglosc_z_paska(rgb, czyt)
 
-    pin = pinezka(img)
-    if pin and not (h * gora < pin[1] < h * 0.97 and w * 0.02 < pin[0] < w * 0.98):
-        pin = None
     kotwice = []  # (x, y, lon, lat, czy_miasto, nr napisu) — jeden napis może mieć kilka możliwych miejsc (miasta o tej samej nazwie)
     for nr, (pole, tekst, pw) in enumerate(odczyty):
         if pw < 0.4 or pole[0][1] < h * gora:
