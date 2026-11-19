@@ -109,6 +109,25 @@ def zrob_zrzut(monitor: int = 1) -> Image.Image:
         return Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
 
 
+def plaskie_pola(img: Image.Image):
+    """Siatka 27x48 pól: True tam, gdzie obraz ma jednolity kolor (mapa, interfejs), False na zdjęciu z ulicy."""
+    import numpy as np
+    a = np.asarray(img.convert("RGB").resize((480, 270))).astype(np.int16)
+    b = a.reshape(27, 10, 48, 10, 3).transpose(0, 2, 1, 3, 4).reshape(27, 48, 100, 3)
+    return (b.max(2) - b.min(2)).max(2) <= 8
+
+
+def czy_mapa(img: Image.Image) -> bool:
+    """Czy dolną, lewą i środkową część ekranu zajmuje mapa (duże jednolite plamy koloru), a nie widok z ulicy.
+
+    Prawy dolny róg pomijamy, bo tam w trakcie rundy bywa powiększona minimapa.
+    """
+    try:
+        return float(plaskie_pola(img)[12:25, 4:30].mean()) >= 0.38
+    except Exception:
+        return False
+
+
 def rodzaj_ekranu(img: Image.Image) -> str:
     """Rozpoznaje po kolorach: 'wynik' (fioletowy pasek u góry + mapa), 'podsumowanie' (cały fioletowy) albo 'runda'."""
     m = img.convert("RGB").resize((160, 90))
@@ -126,6 +145,10 @@ def rodzaj_ekranu(img: Image.Image) -> str:
         return "wynik"
     if gora > 0.6 and dol_f > 0.4:
         return "podsumowanie"
+    if dol_f > 0.4:
+        return "podsumowanie"       # fioletowe tło bez paska: ekrany między grami, menu
+    if czy_mapa(img):
+        return "wynik"              # inne tryby gry: ekran wyniku to duża mapa bez fioletowego paska
     return "runda"
 
 

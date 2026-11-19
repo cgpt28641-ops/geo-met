@@ -185,6 +185,14 @@ def czytaj_napisy(obrazy: list, kandydaci: list | None = None) -> list[dict]:
         px[int(h * 0.72):, int(w * 0.80):] = 0       # minimapa
         px[int(h * 0.50):, : int(w * 0.07)] = 0      # przyciski po lewej
         px[int(h * 0.95):] = 0                       # stopka Google
+        try:  # powiększona minimapa (prawa dolna część ekranu): nazwy z mapy to nie napisy z ulicy
+            pl = silnik.plaskie_pola(img)
+            for wy in range(9, 27, 3):
+                for kx in range(24, 48, 3):
+                    if pl[wy:wy + 3, kx:kx + 3].mean() >= 0.5:
+                        px[int(h * wy / 27):int(h * (wy + 3) / 27), int(w * kx / 48):int(w * (kx + 3) / 48)] = 0
+        except Exception:
+            pass
         odczyty = [(t, float(pw)) for _, t, pw in ocr.readtext(px)]
         try:  # drugi etap: małe pola tekstu powiększone 4x
             pola = ocr.detect(px, text_threshold=0.5, low_text=0.3)[0][0]

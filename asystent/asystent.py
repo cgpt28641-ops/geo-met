@@ -605,6 +605,7 @@ class Asystent:
         porady = bool(self.cfg.get("porady", False))
         lekcja = silnik_lokalny.lekcja(widoki, kod, ok, odczyt, typy, porady)
         wpis = silnik.zapisz_runde(lekcja, widoki, wynik)
+        self.widoki.clear()     # runda zamknięta: następna analiza nie może korzystać z jej widoków
         silnik.log(f"lekcja: kraj {kod} · potwierdzenie gracza {ok} · miejsce {lekcja.get('miejsce')!r} · odległość {lekcja.get('odleglosc_km')} · model {lekcja.get('model')} · regiony {lekcja.get('regiony')} · pliki {wpis.get('pliki')}")
         info = f"model lokalny · {silnik_lokalny.urzadzenie()} · 0 zł"
         if self.cfg.get("sync_url") and self.cfg.get("sync_token"):
