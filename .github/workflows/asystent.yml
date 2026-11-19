@@ -22,10 +22,10 @@ jobs:
           pip install -r requirements.txt pyinstaller
       - name: Sprawdź składnię
         working-directory: asystent
-        run: python -m py_compile asystent.py silnik.py silnik_lokalny.py synchronizacja.py
+        run: python -m py_compile asystent.py silnik.py silnik_lokalny.py mapa.py synchronizacja.py
       - name: Zbuduj .exe
         working-directory: asystent
-        run: pyinstaller --onefile --noconsole --name GeoMetaAsystent --add-data "meta_kontekst.txt;." --add-data "kraje.json;." --add-data "reguly.json;." --add-data "reguly_regiony.json;." --add-data "regiony.json;." asystent.py
+        run: pyinstaller --onefile --noconsole --name GeoMetaAsystent --add-data "meta_kontekst.txt;." --add-data "kraje.json;." --add-data "reguly.json;." --add-data "reguly_regiony.json;." --add-data "regiony.json;." --add-data "mapa.json;." --add-data "miasta.json;." asystent.py
       - uses: actions/upload-artifact@v4
         with:
           name: GeoMetaAsystent-Windows

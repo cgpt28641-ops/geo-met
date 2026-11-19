@@ -50,21 +50,127 @@ def urzadzenie() -> str:
     return "karta graficzna" if _stan["urz"] == "cuda" else "procesor"
 
 
-def typuj(obrazy: list, ile: int = 5) -> list[dict]:
+def _fragmenty(img) -> list:
+    w, h = img.size
+    img = img.convert("RGB").crop((0, int(h * 0.10), w, int(h * 0.90)))  # bez pasków interfejsu gry
+    w, h = img.size
+    cw = w // 2
+    return [img] + [img.crop((x, 0, x + cw, h)) for x in (0, (w - cw) // 2, w - cw)]
+
+
+# Reguły z napisów (poradniki GeoMeta: litery i słowa charakterystyczne dla krajów)
+LITERY = {"ł": ["pl"], "ń": ["pl"], "ż": ["pl"], "ź": ["pl"], "ą": ["pl", "lt"], "ę": ["pl", "lt"],
+          "ř": ["cz"], "ě": ["cz"], "ů": ["cz"], "ľ": ["sk"], "ĺ": ["sk"], "ŕ": ["sk"],
+          "ő": ["hu"], "ű": ["hu"], "ș": ["ro"], "ț": ["ro"], "ă": ["ro", "vn"],
+          "ğ": ["tr"], "ı": ["tr"], "ė": ["lt"], "į": ["lt"], "ų": ["lt"],
+          "ā": ["lv"], "ē": ["lv"], "ī": ["lv"], "ķ": ["lv"], "ļ": ["lv"], "ņ": ["lv"],
+          "þ": ["is"], "ð": ["is", "fo"], "ß": ["de", "at"], "ø": ["no", "dk", "fo"], "æ": ["no", "dk", "is", "fo"],
+          "å": ["se", "no", "dk", "fi"], "õ": ["ee", "pt", "br"], "ã": ["pt", "br"],
+          "ñ": ["es", "mx", "ar", "cl", "co", "pe", "ec", "bo", "uy", "gt", "cr", "pa", "do", "pr"]}
+SLOWA = {"ulica": ["pl", "hr", "rs", "si", "me"], "straße": ["de", "at"], "strasse": ["de", "at", "ch", "li"],
+         "rua": ["pt", "br"], "avenida": ["es", "pt", "br", "mx", "ar", "cl", "co", "pe", "ec", "bo", "uy"],
+         "calle": ["es", "mx", "ar", "cl", "co", "pe", "ec", "bo", "uy", "gt", "cr", "pa", "do", "pr"],
+         "pare": ["br", "ar", "cl", "co", "pe", "ec", "bo", "uy"], "alto": ["mx", "gt", "cr", "pa", "do"],
+         "arrêt": ["ca"], "rue": ["fr", "be", "lu", "ch", "ca", "sn", "tn", "mg"], "utca": ["hu"], "jalan": ["id", "my", "sg"],
+         "gatan": ["se"], "vägen": ["se"], "veien": ["no"], "vegen": ["no"], "katu": ["fi"], "straat": ["nl", "be"],
+         "iela": ["lv"], "gatvė": ["lt"], "tänav": ["ee"], "cadde": ["tr"], "caddesi": ["tr"], "sokak": ["tr"],
+         "strada": ["ro", "it"], "piazza": ["it"], "apteka": ["pl"], "sklep": ["pl"], "lekárna": ["cz"], "potraviny": ["cz", "sk"],
+         "farmacia": ["es", "it", "mx", "ar", "cl", "co", "pe"], "boulangerie": ["fr", "be"], "bäckerei": ["de", "at", "ch"]}
+
+
+def napisy_dostepne() -> bool:
+    try:
+        import easyocr  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+def czytaj_napisy(obrazy: list) -> list[dict]:
+    """Odczytuje napisy z widoku (bez interfejsu gry) i dopasowuje do nich reguły. Wymaga biblioteki easyocr."""
+    if not obrazy or not napisy_dostepne():
+        return []
+    import re
+
+    import numpy as np
+    if "ocr" not in _stan:
+        import easyocr
+        import torch
+        _stan["ocr"] = easyocr.Reader(["en", "pl", "cs", "sk", "hu", "ro", "tr", "es", "pt", "fr", "de", "lt", "lv", "et", "da", "no", "sv", "is", "it", "nl"],
+                                      gpu=torch.cuda.is_available(), verbose=False)
+    domeny = {k["domain"].lstrip("."): k["id"] for k in kraje() if k.get("domain")}
+    if "miasta" not in _stan:
+        _stan["miasta"] = json.loads((silnik.katalog_zasobow() / "miasta.json").read_text(encoding="utf-8"))
+    import unicodedata
+    uprosc = lambda t: "".join(c for c in unicodedata.normalize("NFD", t.lower().replace("ł", "l").replace("ø", "o").replace("đ", "d")) if unicodedata.category(c) != "Mn")
+    wynik, widziane = [], set()
+    for img in obrazy:
+        w, h = img.size
+        img = img.convert("RGB").copy()
+        px = np.asarray(img).copy()
+        px[: int(h * 0.12)] = 0                      # górny pasek gry
+        px[int(h * 0.72):, int(w * 0.80):] = 0       # minimapa
+        px[int(h * 0.50):, : int(w * 0.07)] = 0      # przyciski po lewej
+        px[int(h * 0.95):] = 0                       # stopka Google
+        for _, tekst, pewnosc in _stan["ocr"].readtext(px):
+            t = tekst.strip().lower()
+            if pewnosc < 0.55 or len(t) < 3 or t in widziane or "google" in t:
+                continue
+            kody, powod = [], ""
+            miasto = _stan["miasta"].get(uprosc(t).strip(" .,-")) if pewnosc >= 0.6 and len(t) >= 5 else None
+            if miasto:
+                widziane.add(t)
+                wynik.append({"napis": tekst.strip(), "powod": "nazwa miasta", "kody": [miasto[1]], "kraje": kraj(miasto[1])["pl"] if kraj(miasto[1]) else miasto[1],
+                              "miasto": {"nazwa": miasto[0], "lat": miasto[2], "lon": miasto[3]}})
+                continue
+            m = re.search(r"\.([a-z]{2})\b", t)
+            if m and m.group(1) in domeny and ("www" in t or "." in t[:-3]):
+                kody, powod = [domeny[m.group(1)]], f"domena .{m.group(1)}"
+            if not kody:
+                for slowo in re.findall(r"[^\W\d_]+", t):
+                    if slowo in SLOWA:
+                        kody, powod = SLOWA[slowo], f"słowo „{slowo}”"
+                        break
+            if not kody and pewnosc >= 0.7 and len(t) >= 4:
+                for lit, k in LITERY.items():
+                    if lit in t:
+                        kody, powod = k, f"litera „{lit}”"
+                        break
+            if kody:
+                widziane.add(t)
+                nazwy = ", ".join(kraj(k)["pl"] for k in kody[:6] if kraj(k)) + ("…" if len(kody) > 6 else "")
+                wynik.append({"napis": tekst.strip(), "powod": powod, "kody": kody, "kraje": nazwy})
+    return wynik[:5]
+
+
+def ostatnie_napisy() -> list[dict]:
+    return _stan.get("ostatnie_napisy", [])
+
+
+def typuj(obrazy: list, ile: int = 5, uzyj_napisow: bool = True) -> list[dict]:
     """Zwraca najbardziej prawdopodobne kraje dla zrzutów (uśrednione)."""
     _zaladuj()
     torch, model, proc = _stan["torch"], _stan["model"], _stan["proc"]
     suma = None
     with torch.no_grad():
         for img in obrazy:
-            w, h = img.size
-            img = img.convert("RGB").crop((0, int(h * 0.06), w, int(h * 0.88)))  # bez pasków interfejsu gry
-            wej = proc(images=img, return_tensors="pt").to(_stan["urz"])
+            # cały widok + trzy fragmenty (lewy, środek, prawy) — w teście dało to wyraźnie lepszą trafność
+            wej = proc(images=_fragmenty(img), return_tensors="pt").to(_stan["urz"])
             o = model.visual_projection(model.vision_model(**wej).pooler_output)
             o = o / o.norm(dim=-1, keepdim=True)
-            p = (100 * o @ _stan["tekst"].T).softmax(-1)[0]
+            pr = (100 * o @ _stan["tekst"].T).softmax(-1)
+            p = (pr[0] * 2 + pr[1:].sum(0)) / 5   # cały widok liczy się podwójnie
             suma = p if suma is None else suma + p
     p = (suma / len(obrazy)).cpu()
+    napisy = czytaj_napisy(obrazy[-1:]) if uzyj_napisow else []
+    if napisy:
+        lista = kraje()
+        for n in napisy:  # reguła z napisu podbija pasujące kraje
+            for i, k in enumerate(lista):
+                if k["id"] in n["kody"]:
+                    p[i] = p[i] * 3 + 0.02
+        p = p / p.sum()
+    _stan["ostatnie_napisy"] = napisy
     top = p.topk(ile)
     lista = kraje()
     return [{"kod": lista[i]["id"], "kraj": lista[i]["pl"], "pewnosc": round(float(v) * 100)} for v, i in zip(top.values, top.indices)]
@@ -227,6 +333,7 @@ def lekcja(widoki: list, poprawny_kod: str, trafiony: bool) -> dict:
         "lekcja": f"{k['summary']} {ocena}", "przeoczone": k["tips"][:3],
         "zagadka": pierwsza, "model": typy, "widziane": widziane, "wskazowki": wskazowki,
         "pomylony": pomylony["pl"] if pomylony else "", "roznice": roznice(k, pomylony) if pomylony else [],
+        "napisy": ostatnie_napisy(),
         "pasujace": pasujace_reguly(ost, poprawny_kod),
         "regiony": typuj_region(ost, poprawny_kod),
         "pasujace_regionalne": pasujace_reguly(ost, poprawny_kod, 3, regionalne=True),

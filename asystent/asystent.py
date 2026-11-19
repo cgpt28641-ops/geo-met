@@ -16,6 +16,7 @@ import webbrowser
 from collections import deque
 from tkinter import messagebox, ttk
 
+import mapa
 import silnik
 import silnik_lokalny
 import synchronizacja
@@ -46,7 +47,7 @@ class Asystent:
         except tk.TclError:
             pass
         self.root.configure(bg=KOLOR_TLA)
-        self.root.geometry("380x320-20+60")
+        self.root.geometry("400x600-20+60")
         self.root.minsize(300, 200)
         self._buduj_okno()
         self._podepnij_skroty()
@@ -82,6 +83,11 @@ class Asystent:
         self.txt.tag_configure("akc", foreground=KOLOR_AKCENT, font=("Segoe UI", 11, "bold"))
         self.txt.tag_configure("szary", foreground=KOLOR_SZARY)
 
+        self.plotno = tk.Canvas(self.root, height=190, bg=mapa.TLO, highlightthickness=0)
+        self.plotno.pack(fill="x", padx=10, pady=(6, 0))
+        self.ostatnia_mapa = None
+        self.plotno.bind("<Configure>", lambda e: self.rysuj_mape(*self.ostatnia_mapa) if self.ostatnia_mapa else None)
+
         dol = tk.Frame(self.root, bg=KOLOR_TLA)
         dol.pack(fill="x", padx=10, pady=8)
         self.btn_analiza = tk.Button(dol, text="🔍 Analiza (F8)", command=self.analiza)
@@ -92,6 +98,30 @@ class Asystent:
         self._odswiez_status()
         self.pisz([("Gotowy. ", "akc"), (f"{self.cfg['skrot_koniec_rundy'].upper()} po każdej rundzie = nauka na poprawnym miejscu.\n", ""),
                    (f"{self.cfg['skrot_podpowiedzi'].upper()} włącza podpowiedzi (tylko gra pojedyncza / trening).", "szary")])
+
+    def rysuj_mape(self, kody: list, punkty: list) -> None:
+        """Zaznacza na mapie typowane kraje (zielone, od najmocniejszego), region (pomarańczowy) i miasta (czerwone)."""
+        self.ostatnia_mapa = (kody, punkty)
+        try:
+            szer, wys = max(200, self.plotno.winfo_width()), max(120, self.plotno.winfo_height())
+            p = mapa.plan(kody, punkty, szer, wys)
+            self.plotno.delete("all")
+            for wsp, kolor in p["wielokaty"]:
+                if len(wsp) >= 6:
+                    self.plotno.create_polygon(wsp, fill=kolor, outline=mapa.KRAWEDZ, width=1)
+            for x, y, napis, kolor, dy in p["znaczniki"]:
+                self.plotno.create_oval(x - 5, y - 5, x + 5, y + 5, fill=kolor, outline="white", width=2)
+                if napis:
+                    self.plotno.create_text(x + 8, y + dy, text=napis, anchor="w", fill="white", font=("Segoe UI", 8, "bold"))
+        except Exception as e:
+            self.plotno.delete("all")
+            self.plotno.create_text(10, 10, text=f"Mapa niedostępna: {e}", anchor="nw", fill="white")
+
+    @staticmethod
+    def _punkty_mapy(regiony: list, napisy: list) -> list:
+        pkt = [{"lat": r["lat"], "lon": r["lon"], "napis": f"{r['region'].replace('województwo ', 'woj. ')} {r['pewnosc']}%", "kolor": "#f2a516"} for r in regiony[:1]]
+        pkt += [{"lat": n["miasto"]["lat"], "lon": n["miasto"]["lon"], "napis": n["miasto"]["nazwa"], "kolor": "#e5484d"} for n in napisy if n.get("miasto")]
+        return pkt
 
     def _odswiez_status(self) -> None:
         on = self.cfg.get("podpowiedzi")
@@ -211,6 +241,9 @@ class Asystent:
             typy = silnik_lokalny.typuj(widoki, 3)
             widziane = silnik_lokalny.sprawdz_reguly(widoki)
             czesci = []
+            napisy = silnik_lokalny.ostatnie_napisy()
+            if napisy:
+                czesci += [("Odczytane napisy:\n", "b")] + [(f" • „{n['napis']}” ({n['powod']}) → {n['kraje']}\n", "") for n in napisy]
             if widziane:
                 czesci += [("Zauważone na zrzutach:\n", "b")] + [(f" • {w['widac']} ({w['pewnosc']}%) → {w['regula']}\n", "") for w in widziane]
             czesci.append(("\nNajbardziej prawdopodobne:\n", "b"))
@@ -218,6 +251,7 @@ class Asystent:
                 czesci.append((f" {t['kraj']} — {t['pewnosc']}%\n", "akc"))
                 czesci += [(f"   • sprawdź: {r}\n", "") for r in silnik_lokalny.pasujace_reguly(widoki, t["kod"], 2)]
             regiony = silnik_lokalny.typuj_region(widoki, typy[0]["kod"], 2) if typy else []
+            self.kolejka.put(("akcja", lambda: self.rysuj_mape([t["kod"] for t in typy], self._punkty_mapy(regiony, napisy))))
             if regiony:
                 czesci.append(("\nRegion (orientacyjnie): " + ", ".join(f"{r['region']} {r['pewnosc']}%" for r in regiony), "szary"))
             self.kolejka.put(("pisz", czesci))
@@ -324,14 +358,15 @@ class Asystent:
                     except Exception as e:
                         info += f" · ☁ nie wysłano ({e})"
                 czesci = [(("✅ " if ok else "❌ ") + lekcja["poprawny_kraj"] + "\n\n", "akc"), (lekcja["lekcja"] + "\n", "")]
+                self.kolejka.put(("akcja", lambda: self.rysuj_mape([kod], self._punkty_mapy(lekcja["regiony"], lekcja["napisy"]))))
+                if lekcja["napisy"]:
+                    czesci += [("\nOdczytane napisy:\n", "b")] + [(f" • „{n['napis']}” ({n['powod']}) → {n['kraje']}\n", "") for n in lekcja["napisy"]]
                 if lekcja["widziane"]:
                     czesci += [("\nModel zauważył na zrzutach (sprawdź sam):\n", "b")] + [(f" • {w['widac']} ({w['pewnosc']}%) → {w['regula']}\n", "") for w in lekcja["widziane"]]
                 if lekcja["pasujace"]:
                     czesci += [("\nReguły GeoMeta najlepiej pasujące do tych widoków:\n", "b")] + [(f" • {x}\n", "") for x in lekcja["pasujace"]]
                 if lekcja["regiony"]:
-                    r0 = lekcja["regiony"][0]
                     czesci += [("\nGdzie w tym kraju (typ modelu):\n", "b")] + [(f" • {r['region']} — {r['pewnosc']}%\n", "") for r in lekcja["regiony"]]
-                    czesci.append((f"   mapa: https://www.google.com/maps/@{r0['lat']},{r0['lon']},8z\n", "szary"))
                 if lekcja["pasujace_regionalne"]:
                     czesci += [("\nWskazówki regionalne pasujące do widoków:\n", "b")] + [(f" • {x}\n", "") for x in lekcja["pasujace_regionalne"]]
                 if lekcja["pasujace_pomylony"]:
