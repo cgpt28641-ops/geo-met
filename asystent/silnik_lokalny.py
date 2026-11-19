@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 
 import silnik
 
 MODEL = "geolocal/StreetCLIP"
 _stan: dict = {}
+_blokada = threading.RLock()      # model i czytnik napisów wczytuje naraz tylko jeden wątek
+_pamiec_ocr: dict = {}            # napisy już odczytane z danego zrzutu (żeby nie czytać go drugi raz)
 
 
 def kraje() -> list[dict]:
@@ -29,7 +32,25 @@ def dostepny() -> tuple[bool, str]:
         return False, f"Tryb darmowy wymaga bibliotek torch i transformers ({e}). Uruchom „zainstaluj_darmowy.bat”."
 
 
+def przygotuj() -> None:
+    """Wczytuje model i czytnik napisów zawczasu (w tle po starcie), żeby pierwsza analiza nie czekała."""
+    try:
+        _zaladuj()
+        if napisy_dostepne():
+            czytnik()
+        silnik.log("model i czytnik napisów gotowe")
+    except Exception:
+        silnik.log("BŁĄD przy wczytywaniu modelu", blad=True)
+
+
 def _zaladuj():
+    if "model" in _stan:
+        return
+    with _blokada:
+        _zaladuj_naprawde()
+
+
+def _zaladuj_naprawde():
     if "model" in _stan:
         return
     import torch
@@ -153,12 +174,20 @@ def miasta() -> dict:
 
 def czytnik():
     """Wspólny program do czytania napisów (ładowany przy pierwszym użyciu)."""
-    if "ocr" not in _stan:
+    if "ocr" in _stan:
+        return _stan["ocr"]
+    with _blokada:
+      if "ocr" not in _stan:
         import easyocr
         import torch
         _stan["ocr"] = easyocr.Reader(["en", "pl", "cs", "sk", "hu", "ro", "tr", "es", "pt", "fr", "de", "lt", "lv", "et", "da", "no", "sv", "is", "it", "nl"],
-                                      gpu=torch.cuda.is_available(), verbose=False)
+                                        gpu=torch.cuda.is_available(), verbose=False)
     return _stan["ocr"]
+
+
+# napisy, które są też nazwami miast, ale na ulicy prawie zawsze znaczą coś innego (marki aut, sieci stacji i sklepów)
+NIE_MIASTA = {"toyota", "honda", "suzuki", "nissan", "mazda", "ford", "fiat", "opel", "seat", "volvo", "kia", "hyundai", "isuzu", "hino", "scania",
+              "shell", "total", "orange", "victoria", "union", "central", "google", "taxi", "bus", "stop", "hotel", "market", "bar", "cafe"}
 
 
 def czytaj_napisy(obrazy: list, kandydaci: list | None = None) -> list[dict]:
@@ -178,6 +207,7 @@ def czytaj_napisy(obrazy: list, kandydaci: list | None = None) -> list[dict]:
     miasta()
     wynik, widziane = [], set()
     for img in obrazy:
+        img0 = img
         w, h = img.size
         img = img.convert("RGB")
         px = np.asarray(img).copy()
@@ -193,18 +223,24 @@ def czytaj_napisy(obrazy: list, kandydaci: list | None = None) -> list[dict]:
                         px[int(h * wy / 27):int(h * (wy + 3) / 27), int(w * kx / 48):int(w * (kx + 3) / 48)] = 0
         except Exception:
             pass
-        odczyty = [(t, float(pw)) for _, t, pw in ocr.readtext(px)]
-        try:  # drugi etap: małe pola tekstu powiększone 4x
-            pola = ocr.detect(px, text_threshold=0.5, low_text=0.3)[0][0]
-            czyste = Image.fromarray(px)
-            for x0, x1, y0, y1 in pola[:40]:
-                if y1 - y0 > 34 or x1 - x0 < 14:
-                    continue
-                c = czyste.crop((max(0, int(x0) - 8), max(0, int(y0) - 8), int(x1) + 8, int(y1) + 8))
-                c = c.resize((c.width * 4, c.height * 4), Image.LANCZOS)
-                odczyty += [(t, float(pw) * 0.9) for _, t, pw in ocr.readtext(np.asarray(c))]
-        except Exception:
-            pass
+        zapamietane = _pamiec_ocr.get(id(img0))
+        if zapamietane is not None and zapamietane[0] is img0:
+            odczyty = zapamietane[1]
+        else:
+            odczyty = [(t, float(pw)) for _, t, pw in ocr.readtext(px)]
+            try:  # drugi etap: małe pola tekstu powiększone 4x
+                pola = ocr.detect(px, text_threshold=0.5, low_text=0.3)[0][0]
+                czyste = Image.fromarray(px)
+                male = [q for q in pola if q[3] - q[2] <= 34 and q[1] - q[0] >= 14]
+                for x0, x1, y0, y1 in male[:14]:
+                    c = czyste.crop((max(0, int(x0) - 8), max(0, int(y0) - 8), int(x1) + 8, int(y1) + 8))
+                    c = c.resize((c.width * 4, c.height * 4), Image.LANCZOS)
+                    odczyty += [(t, float(pw) * 0.9) for _, t, pw in ocr.readtext(np.asarray(c))]
+            except Exception:
+                pass
+            if len(_pamiec_ocr) > 60:
+                _pamiec_ocr.clear()
+            _pamiec_ocr[id(img0)] = (img0, odczyty)
         for tekst, pewnosc in odczyty:
             t = tekst.strip().lower()
             if len(t) < 3 or t in widziane or "google" in t:
@@ -212,7 +248,7 @@ def czytaj_napisy(obrazy: list, kandydaci: list | None = None) -> list[dict]:
             kody, powod, miasto = [], "", None
             klucz = _uprosc(t).strip(" .,-")
             if pewnosc >= 0.6 and len(klucz) >= 5:
-                miasto = _stan["miasta"].get(klucz)
+                miasto = _stan["miasta"].get(klucz) if klucz not in NIE_MIASTA else None
                 if miasto:
                     powod = "nazwa miasta"
             if not miasto and kandydaci and pewnosc >= 0.25 and len(klucz) >= 6 and klucz.isalpha():
@@ -348,6 +384,8 @@ def opis_uczenia() -> str:
 
 def typuj(obrazy: list, ile: int = 5, uzyj_napisow: bool = True) -> list[dict]:
     """Zwraca najbardziej prawdopodobne kraje dla zrzutów (uśrednione)."""
+    import time as _t
+    t_start = _t.time()
     _zaladuj()
     torch, model, proc = _stan["torch"], _stan["model"], _stan["proc"]
     suma = None
@@ -368,7 +406,10 @@ def typuj(obrazy: list, ile: int = 5, uzyj_napisow: bool = True) -> list[dict]:
             p = p / p.sum()
     except Exception:
         silnik.log("BŁĄD w typowaniu (pomijam ten krok)", blad=True)
+    import time
+    t_model = time.time()
     napisy = czytaj_napisy(obrazy[-3:], [lista[i]["id"] for i in p.topk(6).indices.tolist()]) if uzyj_napisow else []
+    t_napisy = time.time()
     if napisy:
         for n in napisy:  # reguła z napisu podbija pasujące kraje (miasto najmocniej)
             for i, k in enumerate(lista):
@@ -402,7 +443,7 @@ def typuj(obrazy: list, ile: int = 5, uzyj_napisow: bool = True) -> list[dict]:
     _stan["ostatnie_dodatki"] = dodatki
     top = p.topk(ile)
     wynik = [{"kod": lista[i]["id"], "kraj": lista[i]["pl"], "pewnosc": round(float(v) * 100)} for v, i in zip(top.values, top.indices)]
-    silnik.log(f"typuj: {len(obrazy)} widoków {[o.size for o in obrazy][:2]} · {_stan['urz']} · " + ", ".join(f"{t['kod']} {t['pewnosc']}%" for t in wynik)
+    silnik.log(f"typuj: {len(obrazy)} widoków · {_stan['urz']} · model {t_model - t_start:.1f} s, napisy {t_napisy - t_model:.1f} s, reszta {time.time() - t_napisy:.1f} s · " + ", ".join(f"{t['kod']} {t['pewnosc']}%" for t in wynik)
                + f" · napisy {[(n['napis'], n['powod'], n['kody'][:4]) for n in napisy]} · dodatki {dodatki}")
     return wynik
 

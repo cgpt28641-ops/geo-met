@@ -99,14 +99,22 @@ def zapisz_ustawienia(cfg: dict) -> None:
 
 # ───────────────────────── zrzuty ekranu ─────────────────────────
 
-def zrob_zrzut(monitor: int = 1) -> Image.Image:
+def zrob_zrzut(monitor: int = 1, zaslon: list | None = None) -> Image.Image:
+    """Zrzut wybranego monitora. zaslon: prostokąty (x0, y0, x1, y1) we współrzędnych ekranu do zamalowania
+    (okienko asystenta, gdy system nie potrafi go pominąć przy zrzucie)."""
     import mss  # import tutaj, żeby testy bez ekranu nie wymagały mss
 
     with mss.mss() as sct:
         mons = sct.monitors
         m = mons[monitor] if 0 < monitor < len(mons) else mons[1]
         shot = sct.grab(m)
-        return Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+        img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+    for x0, y0, x1, y1 in zaslon or []:
+        x0, y0, x1, y1 = x0 - m["left"], y0 - m["top"], x1 - m["left"], y1 - m["top"]
+        x0, y0, x1, y1 = max(0, x0), max(0, y0), min(img.width, x1), min(img.height, y1)
+        if x1 > x0 and y1 > y0:
+            img.paste((0, 0, 0), (x0, y0, x1, y1))
+    return img
 
 
 def plaskie_pola(img: Image.Image):
@@ -152,7 +160,7 @@ def rodzaj_ekranu(img: Image.Image) -> str:
     return "runda"
 
 
-def czy_pojedynek(img: Image.Image) -> bool:
+def czy_pojedynek(img: Image.Image, jeden_pasek: bool = False) -> bool:
     """Wykrywa ekran pojedynku (Duels): dwa jasnozielone paski życia u góry, po lewej i po prawej."""
     m = img.convert("RGB").resize((320, 180))
     px = m.load()
@@ -165,7 +173,9 @@ def czy_pojedynek(img: Image.Image) -> bool:
         for y in range(4, 20):  # paski życia leżą w górnych ~10% ekranu
             najlepszy = max(najlepszy, sum(zielony(*px[x, y]) for x in range(x0, x1)) / (x1 - x0))
         return najlepszy
-    return pasek(14, 76) > 0.55 and pasek(244, 306) > 0.55
+    lewy, prawy = pasek(14, 76) > 0.55, pasek(244, 306) > 0.55
+    # jeden_pasek: gdy część górnego paska jest zasłonięta (np. zamalowanym okienkiem asystenta), wystarcza jeden pasek życia
+    return (lewy or prawy) if jeden_pasek else (lewy and prawy)
 
 
 def podpis_klatki(img: Image.Image) -> bytes:

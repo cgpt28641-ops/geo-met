@@ -74,6 +74,10 @@ class Asystent:
         except Exception:
             pass
         self.root.protocol("WM_DELETE_WINDOW", self._zamknij)
+        self.niewidoczne = False      # czy system pomija okienko asystenta przy zrzutach ekranu
+        self.prostokaty: list = []    # położenie okienek asystenta (do zamalowania, gdy powyższe nie działa)
+        self.root.after(400, lambda: self._ukryj_przed_zrzutem(self.root, True))
+        self.root.after(500, self._sledz_okno)
         self._podepnij_skroty()
         self.root.after(200, self._obsluz_kolejke)
         threading.Thread(target=self._petla_pamieci, daemon=True).start()
@@ -84,6 +88,8 @@ class Asystent:
             if not ok:
                 self.cfg["tryb"] = "claude"
                 self.root.after(600, lambda: self.pisz([("Tryb darmowy niedostępny. ", "b"), (powod + "\nPrzełączono na tryb Claude (płatny).", "")]))
+            else:   # model wczytujemy od razu w tle, żeby pierwsza analiza nie czekała kilkunastu sekund
+                threading.Thread(target=silnik_lokalny.przygotuj, daemon=True).start()
         if self.cfg.get("tryb") == "claude" and not (self.cfg.get("api_key") or "").strip():
             self.root.after(400, self.ustawienia)
 
@@ -188,6 +194,36 @@ class Asystent:
         self.btn_analiza.config(state=("normal" if on else "disabled"))
         k = self.silnik.koszt
         self.lbl_koszt.config(text=("tryb darmowy · 0 zł" + (" · " + self.pamiec if self.pamiec else "")) if self.lokalny else f"{k.wywolania} analiz · ~{k.pln:.2f} zł")
+
+    def _ukryj_przed_zrzutem(self, okno, glowne: bool = False) -> None:
+        """Prosi Windows, żeby pomijał to okienko przy zrzutach ekranu — inaczej asystent czytałby własne napisy."""
+        ok = False
+        try:
+            import ctypes
+            okno.update_idletasks()
+            uchwyt = ctypes.windll.user32.GetParent(okno.winfo_id()) or okno.winfo_id()
+            ok = bool(ctypes.windll.user32.SetWindowDisplayAffinity(uchwyt, 0x11))
+        except Exception:
+            ok = False
+        if glowne:
+            self.niewidoczne = ok
+            silnik.log(f"okienko pomijane przy zrzutach: {ok}" + ("" if ok else " — będzie zamalowywane na zrzucie"))
+
+    def _sledz_okno(self) -> None:
+        """Zapamiętuje położenie okienek asystenta (główne i pytanie o kraj), żeby móc je zamalować na zrzucie."""
+        try:
+            okna = [self.root] + ([self.okno_rundy] if self.okno_rundy is not None and self.okno_rundy.winfo_exists() else [])
+            self.prostokaty = [(o.winfo_rootx() - 10, o.winfo_rooty() - 40, o.winfo_rootx() + o.winfo_width() + 10, o.winfo_rooty() + o.winfo_height() + 10) for o in okna]
+        except Exception:
+            pass
+        self.root.after(500, self._sledz_okno)
+
+    def _zrzut(self):
+        return silnik.zrob_zrzut(self.cfg.get("monitor", 1), None if self.niewidoczne else self.prostokaty)
+
+    def _pojedynek(self, img) -> bool:
+        # gdy okienko jest zamalowywane, może zasłaniać jeden z pasków życia — wtedy wystarcza drugi
+        return silnik.czy_pojedynek(img, jeden_pasek=not self.niewidoczne)
 
     def _otworz_log(self) -> None:
         try:
@@ -343,10 +379,10 @@ class Asystent:
         while True:
             try:
                 if not self.zajety:
-                    zrzut = silnik.zrob_zrzut(self.cfg.get("monitor", 1))
+                    zrzut = self._zrzut()
                     ekran = silnik.rodzaj_ekranu(zrzut)
                     if ekran != self.ostatni_ekran:
-                        silnik.log(f"ekran: {self.ostatni_ekran} → {ekran} · zrzut {zrzut.size[0]}x{zrzut.size[1]} · widoków {len(self.widoki)} · pojedynek {silnik.czy_pojedynek(zrzut)}")
+                        silnik.log(f"ekran: {self.ostatni_ekran} → {ekran} · zrzut {zrzut.size[0]}x{zrzut.size[1]} · widoków {len(self.widoki)} · pojedynek {self._pojedynek(zrzut)}")
                     elif time.time() - ostatni_log > 30:   # co pół minuty znak życia
                         ostatni_log = time.time()
                         silnik.log(f"pętla zrzutów działa · ekran {ekran} · widoków {len(self.widoki)}")
@@ -359,8 +395,15 @@ class Asystent:
                             self.widoki.append((zrzut, odcisk))
                     elif ekran == "wynik" and self.ostatni_ekran == "runda":
                         if self.lokalny and self.cfg.get("auto_koniec", True) and self.widoki:
-                            silnik.log("wykryto ekran wyniku → uruchamiam lekcję")
-                            self.kolejka.put(("akcja", lambda z=zrzut: self.koniec_rundy_lokalnie(z)))
+                            time.sleep(3)     # mapa wyniku najpierw się animuje; pinezka i odległość pojawiają się po chwili
+                            pozniej = self._zrzut()
+                            if silnik.rodzaj_ekranu(pozniej) == "wynik":
+                                zrzut = pozniej
+                                silnik.log("wykryto ekran wyniku → uruchamiam lekcję (zrzut po 3 s)")
+                                self.kolejka.put(("akcja", lambda z=zrzut: self.koniec_rundy_lokalnie(z)))
+                            else:
+                                ekran = silnik.rodzaj_ekranu(pozniej)
+                                silnik.log(f"ekran wyniku zniknął po 3 s (teraz: {ekran}) — to nie był koniec rundy")
                         else:
                             silnik.log(f"ekran wyniku, ale lekcja nie ruszyła: tryb lokalny {self.lokalny}, auto_koniec {self.cfg.get('auto_koniec', True)}, widoków {len(self.widoki)}")
                     self.ostatni_ekran = ekran
@@ -425,7 +468,7 @@ class Asystent:
         self.pisz([("Analizuję widok…", "szary")])
 
         def praca():
-            zrzut = silnik.zrob_zrzut(self.cfg.get("monitor", 1))
+            zrzut = self._zrzut()
             wynik = self.silnik.analizuj(zrzut)
             wynik["_czas"] = time.time()
             self.ostatnia_analiza, self.odkryte = wynik, False
@@ -437,11 +480,11 @@ class Asystent:
         if self.zajety:
             return
         try:
-            zrzut = silnik.zrob_zrzut(self.cfg.get("monitor", 1))
+            zrzut = self._zrzut()
         except Exception as e:
             self.pisz([("Błąd zrzutu ekranu: ", "b"), (str(e), "")])
             return
-        if silnik.czy_pojedynek(zrzut) or any(silnik.czy_pojedynek(w[0]) for w in list(self.widoki)[-2:]):
+        if self._pojedynek(zrzut) or any(self._pojedynek(w[0]) for w in list(self.widoki)[-2:]):
             silnik.log("analiza: wykryto pojedynek — podpowiedź zablokowana")
             self.pisz([("Pojedynek wykryty 🔒", "akc"), ("\nPodpowiedzi są tu zablokowane. Po rundzie dostaniesz lekcję.", "")])
             return
@@ -502,7 +545,7 @@ class Asystent:
         widoki = silnik.wybierz_rozne(list(self.widoki), 2)
 
         def praca():
-            wynik = silnik.zrob_zrzut(self.cfg.get("monitor", 1))
+            wynik = self._zrzut()
             lekcja = self.silnik.lekcja(widoki, wynik)
             wpis = silnik.zapisz_runde(lekcja, widoki, wynik)
             self.widoki.clear()
@@ -533,7 +576,7 @@ class Asystent:
         silnik.log(f"koniec rundy (lokalnie): widoków zapamiętanych {len(self.widoki)}, do analizy {len(widoki)}, zrzut wyniku {'z pętli' if wynik is not None else 'robię teraz'}")
         if wynik is None:
             try:
-                wynik = silnik.zrob_zrzut(self.cfg.get("monitor", 1))
+                wynik = self._zrzut()
             except Exception as e:
                 self.pisz([("Błąd zrzutu ekranu: ", "b"), (str(e), "")])
                 return
@@ -563,6 +606,7 @@ class Asystent:
         lista = sorted(silnik_lokalny.kraje(), key=lambda k: k["pl"])
         okno = self.okno_rundy = tk.Toplevel(self.root)
         okno.title("Koniec rundy")
+        okno.after(50, lambda: self._ukryj_przed_zrzutem(okno))
         okno.attributes("-topmost", True)
         okno.geometry("360x210")
         ramka = ttk.Frame(okno, padding=12)
