@@ -63,10 +63,10 @@ class Asystent:
         except tk.TclError:
             pass
         self.root.configure(bg=KOLOR_TLA)
-        self.wys_pelna = 600
+        self.wys_pelna = 780
         self.pamiec = ""
         self.pelny_widok = True
-        self.root.geometry("400x600-20+60")
+        self.root.geometry("460x780-20+40")
         self.root.minsize(300, 200)
         self._buduj_okno()
         try:  # zapamiętane położenie i rozmiar okienka
@@ -570,14 +570,19 @@ class Asystent:
             if widziane:
                 czesci += [("Zauważone na zrzutach:\n", "b")] + [(f" • {w['widac']} ({w['pewnosc']}%) → {w['regula']}\n", "") for w in widziane]
             czesci.append(("\nNajbardziej prawdopodobne:\n", "b"))
-            for t in typy:
+            for nr, t in enumerate(typy):
                 czesci.append((f" {t['kraj']} — {t['pewnosc']}%\n", "akc"))
-                if self.cfg.get("porady", False):
-                    czesci += [(f"   • sprawdź: {r}\n", "") for r in silnik_lokalny.pasujace_reguly(widoki, t["kod"], 2)]
+                # dlaczego ten kraj: reguły z poradników (meta GeoGuessr), które najlepiej pasują do widoków; najwięcej dla pierwszego typu
+                try:
+                    reguly = silnik_lokalny.pasujace_reguly(widoki, t["kod"], 3 if nr == 0 else 1)
+                except Exception:
+                    silnik.log("BŁĄD przy dobieraniu reguł", blad=True)
+                    reguly = []
+                czesci += [(f"   • {r if len(r) <= 230 else r[:227].rsplit(' ', 1)[0] + '…'}\n", "") for r in reguly]
             regiony = silnik_lokalny.typuj_region(widoki, typy[0]["kod"], 2) if typy else []
             self.kolejka.put(("akcja", lambda: self.rysuj_mape([t["kod"] for t in typy], self._punkty_mapy(regiony, napisy))))
             belka = "   ".join(f"{i + 1}. {t['kraj']} {t['pewnosc']}%" for i, t in enumerate(typy))
-            self.kolejka.put(("akcja", lambda: (self.belka.config(text=belka), self.ustaw_widok(not self.cfg.get("kompakt", True)))))
+            self.kolejka.put(("akcja", lambda: self.belka.config(text=belka)))     # okno nie zmienia już samo rozmiaru; ↕ przełącza ręcznie
             dodatki = silnik_lokalny.ostatnie_dodatki()
             if dodatki:
                 czesci += [("\nDodatkowe reguły:\n", "b")] + [(f" • {d}\n", "") for d in dodatki]
@@ -657,7 +662,6 @@ class Asystent:
             if not (self.cfg.get("auto_kraj", True) and silnik_lokalny.napisy_dostepne() and silnik.rodzaj_ekranu(wynik) in ("wynik", "mapa")):
                 silnik.log(f"koniec rundy: pytam o kraj ręcznie · auto_kraj {self.cfg.get('auto_kraj', True)} · czytanie napisów {silnik_lokalny.napisy_dostepne()} · ekran {silnik.rodzaj_ekranu(wynik)}")
                 return self._pytaj_o_kraj(widoki, wynik)
-        self.ustaw_widok(True)
         self.pisz([("Czytam mapę wyniku…", "szary")])
 
         def praca():
@@ -767,7 +771,7 @@ class Asystent:
                 punkty += wynik_mapa.miasta_w_okolicy(la, lo)
             except Exception:
                 silnik.log("BŁĄD przy szukaniu miast w okolicy", blad=True)
-        self.kolejka.put(("akcja", lambda: (self.rysuj_mape([kod], punkty), self.belka.config(text=znak + lekcja["poprawny_kraj"]), self.ustaw_widok(True))))
+        self.kolejka.put(("akcja", lambda: (self.rysuj_mape([kod], punkty), self.belka.config(text=znak + lekcja["poprawny_kraj"]))))
         if lekcja["napisy"]:
             czesci += [("\nOdczytane napisy:\n", "b")] + [(f" • „{n['napis']}” ({n['powod']}) → {n['kraje']}\n", "") for n in lekcja["napisy"]]
         if lekcja.get("dodatki"):
@@ -841,8 +845,6 @@ class Asystent:
         ttk.Label(ramka, text="Zrzut ekranu co ile sekund (krócej = więcej widoków z rundy):").pack(anchor="w", pady=(10, 0))
         odstep = tk.IntVar(value=int(self.cfg.get("co_ile_s", 2)))
         tk.Scale(ramka, from_=1, to=10, orient="horizontal", variable=odstep, showvalue=True).pack(fill="x")
-        kompakt = tk.BooleanVar(value=bool(self.cfg.get("kompakt", True)))
-        ttk.Checkbutton(ramka, text="Kompaktowy widok w trakcie rundy (pełna lekcja po rundzie)", variable=kompakt).pack(anchor="w")
         porady_zm = tk.BooleanVar(value=bool(self.cfg.get("porady", False)))
         ttk.Checkbutton(ramka, text="Pokazuj w lekcji porady i wskazówki GeoMeta (wyłączone = tylko to, co rozpoznał program)", variable=porady_zm).pack(anchor="w")
         w_tle = tk.BooleanVar(value=bool(self.cfg.get("w_tle", True)))
@@ -857,7 +859,7 @@ class Asystent:
 
         def zapisz():
             self.cfg.update(tryb=tryby[tryb.get()], api_key=klucz.get().strip(), model=nazwy[model.get()], sync_url=url.get().strip().rstrip("/"),
-                            sync_token=token.get().strip(), co_ile_s=int(odstep.get()), kompakt=bool(kompakt.get()), auto_kraj=bool(auto_kraj.get()), porady=bool(porady_zm.get()), w_tle=bool(w_tle.get()))
+                            sync_token=token.get().strip(), co_ile_s=int(odstep.get()), auto_kraj=bool(auto_kraj.get()), porady=bool(porady_zm.get()), w_tle=bool(w_tle.get()))
             wybrane = [self._wartosc_skrotu(zm.get()) for zm in skroty.values()]
             if len({w for w in wybrane if w}) < len([w for w in wybrane if w]):
                 messagebox.showwarning("GeoMeta", "Każda akcja musi mieć inny skrót.")
