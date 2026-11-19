@@ -86,42 +86,96 @@ def napisy_dostepne() -> bool:
         return False
 
 
-def czytaj_napisy(obrazy: list) -> list[dict]:
-    """Odczytuje napisy z widoku (bez interfejsu gry) i dopasowuje do nich reguły. Wymaga biblioteki easyocr."""
+def _odleglosc1(a: str, b: str) -> bool:
+    """Czy napisy różnią się najwyżej jedną literą (zamiana, brak albo nadmiar)."""
+    if a == b:
+        return True
+    if abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) > len(b):
+        a, b = b, a
+    for i in range(len(b)):
+        if len(a) == len(b):
+            if a[:i] + a[i + 1:] == b[:i] + b[i + 1:]:
+                return True
+        elif a == b[:i] + b[i + 1:]:
+            return True
+    return False
+
+
+def _uprosc(t: str) -> str:
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", t.lower().replace("ł", "l").replace("ø", "o").replace("đ", "d")) if unicodedata.category(c) != "Mn")
+
+
+def czytaj_napisy(obrazy: list, kandydaci: list | None = None) -> list[dict]:
+    """Odczytuje napisy z widoku (bez interfejsu gry) i dopasowuje do nich reguły. Wymaga biblioteki easyocr.
+
+    Małe napisy (tabliczki, drogowskazy) są wycinane, powiększane 4x i czytane drugi raz.
+    kandydaci: kody krajów typowanych przez model — w nich nazwy miast dopasowuje się też w przybliżeniu.
+    """
     if not obrazy or not napisy_dostepne():
         return []
     import re
 
     import numpy as np
+    from PIL import Image
     if "ocr" not in _stan:
         import easyocr
         import torch
         _stan["ocr"] = easyocr.Reader(["en", "pl", "cs", "sk", "hu", "ro", "tr", "es", "pt", "fr", "de", "lt", "lv", "et", "da", "no", "sv", "is", "it", "nl"],
                                       gpu=torch.cuda.is_available(), verbose=False)
+    ocr = _stan["ocr"]
     domeny = {k["domain"].lstrip("."): k["id"] for k in kraje() if k.get("domain")}
     if "miasta" not in _stan:
         _stan["miasta"] = json.loads((silnik.katalog_zasobow() / "miasta.json").read_text(encoding="utf-8"))
-    import unicodedata
-    uprosc = lambda t: "".join(c for c in unicodedata.normalize("NFD", t.lower().replace("ł", "l").replace("ø", "o").replace("đ", "d")) if unicodedata.category(c) != "Mn")
+        wg = {}
+        for klucz, m in _stan["miasta"].items():
+            wg.setdefault(m[1], []).append(klucz)
+        _stan["miasta_wg_kraju"] = wg
     wynik, widziane = [], set()
     for img in obrazy:
         w, h = img.size
-        img = img.convert("RGB").copy()
+        img = img.convert("RGB")
         px = np.asarray(img).copy()
         px[: int(h * 0.12)] = 0                      # górny pasek gry
         px[int(h * 0.72):, int(w * 0.80):] = 0       # minimapa
         px[int(h * 0.50):, : int(w * 0.07)] = 0      # przyciski po lewej
         px[int(h * 0.95):] = 0                       # stopka Google
-        for _, tekst, pewnosc in _stan["ocr"].readtext(px):
+        odczyty = [(t, float(pw)) for _, t, pw in ocr.readtext(px)]
+        try:  # drugi etap: małe pola tekstu powiększone 4x
+            pola = ocr.detect(px, text_threshold=0.5, low_text=0.3)[0][0]
+            czyste = Image.fromarray(px)
+            for x0, x1, y0, y1 in pola[:40]:
+                if y1 - y0 > 34 or x1 - x0 < 14:
+                    continue
+                c = czyste.crop((max(0, int(x0) - 8), max(0, int(y0) - 8), int(x1) + 8, int(y1) + 8))
+                c = c.resize((c.width * 4, c.height * 4), Image.LANCZOS)
+                odczyty += [(t, float(pw) * 0.9) for _, t, pw in ocr.readtext(np.asarray(c))]
+        except Exception:
+            pass
+        for tekst, pewnosc in odczyty:
             t = tekst.strip().lower()
-            if pewnosc < 0.55 or len(t) < 3 or t in widziane or "google" in t:
+            if len(t) < 3 or t in widziane or "google" in t:
                 continue
-            kody, powod = [], ""
-            miasto = _stan["miasta"].get(uprosc(t).strip(" .,-")) if pewnosc >= 0.6 and len(t) >= 5 else None
+            kody, powod, miasto = [], "", None
+            klucz = _uprosc(t).strip(" .,-")
+            if pewnosc >= 0.6 and len(klucz) >= 5:
+                miasto = _stan["miasta"].get(klucz)
+                if miasto:
+                    powod = "nazwa miasta"
+            if not miasto and kandydaci and pewnosc >= 0.25 and len(klucz) >= 6 and klucz.isalpha():
+                for kod in kandydaci:  # przybliżone dopasowanie tylko w typowanych krajach
+                    traf = next((m for m in _stan["miasta_wg_kraju"].get(kod, []) if _odleglosc1(klucz, m)), None)
+                    if traf:
+                        miasto, powod = _stan["miasta"][traf], "nazwa miasta (odczyt przybliżony)"
+                        break
             if miasto:
                 widziane.add(t)
-                wynik.append({"napis": tekst.strip(), "powod": "nazwa miasta", "kody": [miasto[1]], "kraje": kraj(miasto[1])["pl"] if kraj(miasto[1]) else miasto[1],
-                              "miasto": {"nazwa": miasto[0], "lat": miasto[2], "lon": miasto[3]}})
+                wynik.append({"napis": tekst.strip(), "powod": powod, "kody": [miasto[1]], "kraje": kraj(miasto[1])["pl"] if kraj(miasto[1]) else miasto[1],
+                              "miasto": {"nazwa": miasto[0], "kod": miasto[1], "lat": miasto[2], "lon": miasto[3]}})
+                continue
+            if pewnosc < 0.55:
                 continue
             m = re.search(r"\.([a-z]{2})\b", t)
             if m and m.group(1) in domeny and ("www" in t or "." in t[:-3]):
@@ -140,11 +194,105 @@ def czytaj_napisy(obrazy: list) -> list[dict]:
                 widziane.add(t)
                 nazwy = ", ".join(kraj(k)["pl"] for k in kody[:6] if kraj(k)) + ("…" if len(kody) > 6 else "")
                 wynik.append({"napis": tekst.strip(), "powod": powod, "kody": kody, "kraje": nazwy})
+    wynik.sort(key=lambda n: "miasto" not in n)
     return wynik[:5]
 
 
 def ostatnie_napisy() -> list[dict]:
     return _stan.get("ostatnie_napisy", [])
+
+
+# ── uczenie się na rundach gracza ──
+UCZENIE_MIN = 100      # od tylu zapisanych rund asystent sprawdza, czy uczenie pomaga
+UCZENIE_ALFA, UCZENIE_BETA = 3.0, 20.0
+
+
+def _plik_uczenia():
+    return silnik.katalog_aplikacji() / "uczenie.pt"
+
+
+def _dane_uczenia():
+    if "ucz" not in _stan:
+        _zaladuj()
+        torch = _stan["torch"]
+        try:
+            d = torch.load(_plik_uczenia(), map_location="cpu")
+            _stan["ucz"] = {"X": d["X"].float(), "y": list(d["y"])}
+        except Exception:
+            _stan["ucz"] = {"X": torch.zeros((0, _stan["tekst"].shape[1])), "y": []}
+    return _stan["ucz"]
+
+
+def _osadz(obrazy: list):
+    """Średni opis (wektor) całych widoków z rundy."""
+    torch, model, proc = _stan["torch"], _stan["model"], _stan["proc"]
+    with torch.no_grad():
+        wej = proc(images=[_fragmenty(i)[0] for i in obrazy], return_tensors="pt").to(_stan["urz"])
+        o = model.visual_projection(model.vision_model(**wej).pooler_output)
+        o = (o / o.norm(dim=-1, keepdim=True)).mean(0)
+        return (o / o.norm()).cpu()
+
+
+def zapisz_przyklad(obrazy: list, kod: str) -> None:
+    """Zapamiętuje widoki z rundy razem z poprawnym krajem — materiał do uczenia."""
+    if not obrazy or not kraj(kod):
+        return
+    _zaladuj()
+    torch, d = _stan["torch"], _dane_uczenia()
+    nowy = _osadz(obrazy)
+    if d["y"] and d["y"][-1] == kod and float(d["X"][-1] @ nowy) > 0.985:
+        return  # ta sama runda analizowana ponownie — nie dublujemy przykładu
+    d["X"] = torch.cat([d["X"], nowy[None]])
+    d["y"].append(kod)
+    try:
+        torch.save({"X": d["X"], "y": d["y"]}, _plik_uczenia())
+    except Exception:
+        pass
+    _stan.pop("ucz_ocena", None)
+
+
+def _poprawka(zapytanie, bez: int | None = None):
+    """Poprawka do oceny krajów z podobnych rund gracza (bez = pomiń ten przykład przy ocenie)."""
+    torch, d = _stan["torch"], _dane_uczenia()
+    kody = [k["id"] for k in kraje()]
+    pod = torch.exp(-UCZENIE_BETA * (1 - d["X"] @ zapytanie))
+    if bez is not None:
+        pod[bez] = 0
+    popr = torch.zeros(len(kody))
+    for waga, kod in zip(pod.tolist(), d["y"]):
+        popr[kody.index(kod)] += waga
+    return UCZENIE_ALFA * popr
+
+
+def ocena_uczenia() -> dict:
+    """Sprawdza na rundach gracza (każdą rundę oceniając bez niej samej), czy uczenie poprawia trafność."""
+    d = _dane_uczenia()
+    n = len(d["y"])
+    if n < UCZENIE_MIN:
+        return {"rundy": n, "aktywne": False, "bez": None, "z": None}
+    if _stan.get("ucz_ocena", {}).get("rundy") == n:
+        return _stan["ucz_ocena"]
+    torch = _stan["torch"]
+    kody = [k["id"] for k in kraje()]
+    tekst = _stan["tekst"].cpu()
+    bez = z = 0
+    for i in range(n):
+        log = 100 * tekst @ d["X"][i]
+        cel = kody.index(d["y"][i])
+        bez += int(log.argmax()) == cel
+        z += int((log + _poprawka(d["X"][i], bez=i)).argmax()) == cel
+    _stan["ucz_ocena"] = {"rundy": n, "aktywne": z > bez, "bez": round(bez / n * 100), "z": round(z / n * 100)}
+    return _stan["ucz_ocena"]
+
+
+def opis_uczenia() -> str:
+    try:
+        o = ocena_uczenia()
+    except Exception:
+        return ""
+    if o["rundy"] < UCZENIE_MIN:
+        return f"uczenie: {o['rundy']}/{UCZENIE_MIN} rund"
+    return f"uczenie {'włączone' if o['aktywne'] else 'wyłączone (nie pomaga)'}: {o['bez']}% → {o['z']}% na {o['rundy']} rundach"
 
 
 def typuj(obrazy: list, ile: int = 5, uzyj_napisow: bool = True) -> list[dict]:
@@ -162,17 +310,22 @@ def typuj(obrazy: list, ile: int = 5, uzyj_napisow: bool = True) -> list[dict]:
             p = (pr[0] * 2 + pr[1:].sum(0)) / 5   # cały widok liczy się podwójnie
             suma = p if suma is None else suma + p
     p = (suma / len(obrazy)).cpu()
-    napisy = czytaj_napisy(obrazy[-1:]) if uzyj_napisow else []
+    lista = kraje()
+    try:  # uczenie na rundach gracza — tylko gdy sprawdzone, że pomaga
+        if ocena_uczenia()["aktywne"]:
+            p = p * torch.exp(_poprawka(_osadz(obrazy)))
+            p = p / p.sum()
+    except Exception:
+        pass
+    napisy = czytaj_napisy(obrazy[-1:], [lista[i]["id"] for i in p.topk(6).indices.tolist()]) if uzyj_napisow else []
     if napisy:
-        lista = kraje()
-        for n in napisy:  # reguła z napisu podbija pasujące kraje
+        for n in napisy:  # reguła z napisu podbija pasujące kraje (miasto najmocniej)
             for i, k in enumerate(lista):
                 if k["id"] in n["kody"]:
-                    p[i] = p[i] * 3 + 0.02
+                    p[i] = p[i] * (8 if n.get("miasto") else 3) + 0.02
         p = p / p.sum()
     _stan["ostatnie_napisy"] = napisy
     top = p.topk(ile)
-    lista = kraje()
     return [{"kod": lista[i]["id"], "kraj": lista[i]["pl"], "pewnosc": round(float(v) * 100)} for v, i in zip(top.values, top.indices)]
 
 
@@ -292,13 +445,19 @@ def typuj_region(obrazy: list, kod: str, ile: int = 3) -> list[dict]:
         t = t / t.norm(dim=-1, keepdim=True)
         suma = 0
         for img in obrazy:
-            w, h = img.size
-            wej = proc(images=img.convert("RGB").crop((0, int(h * 0.06), w, int(h * 0.88))), return_tensors="pt").to(_stan["urz"])
+            wej = proc(images=_fragmenty(img), return_tensors="pt").to(_stan["urz"])
             o = model.visual_projection(model.vision_model(**wej).pooler_output)
-            suma = suma + (100 * (o / o.norm(dim=-1, keepdim=True)) @ t.T).softmax(-1)[0]
+            pr = (100 * (o / o.norm(dim=-1, keepdim=True)) @ t.T).softmax(-1)
+            suma = suma + (pr[0] * 2 + pr[1:].sum(0)) / 5
         p = (suma / len(obrazy)).cpu()
     top = p.topk(min(ile, len(lista)))
-    return [{"region": lista[i][1], "pewnosc": round(float(v) * 100), "lat": lista[i][2], "lon": lista[i][3]} for v, i in zip(top.values, top.indices)]
+    wynik = [{"region": lista[i][1], "pewnosc": round(float(v) * 100), "lat": lista[i][2], "lon": lista[i][3]} for v, i in zip(top.values, top.indices)]
+    # miasto odczytane z napisu rozstrzyga region: bierzemy region najbliższy temu miastu
+    m = next((n["miasto"] for n in ostatnie_napisy() if n.get("miasto") and n["miasto"].get("kod") == kod), None)
+    if m:
+        r = min(lista, key=lambda r: (r[2] - m["lat"]) ** 2 + (r[3] - m["lon"]) ** 2)
+        wynik = [{"region": f"{r[1]} (z napisu „{m['nazwa']}”)", "pewnosc": 90, "lat": m["lat"], "lon": m["lon"]}] + [x for x in wynik if x["region"] != r[1]][: ile - 1]
+    return wynik
 
 
 def roznice(a: dict, b: dict, ile: int = 4) -> list[str]:
@@ -316,6 +475,10 @@ def lekcja(widoki: list, poprawny_kod: str, trafiony: bool) -> dict:
     k = kraj(poprawny_kod) or {"pl": poprawny_kod, "summary": "", "tips": [], "clues": {}}
     ost = widoki[-3:]
     typy = typuj(ost, 3) if ost else []
+    try:
+        zapisz_przyklad(ost, poprawny_kod)
+    except Exception:
+        pass
     widziane = sprawdz_reguly(ost) if ost else []
     poz = next((i for i, t in enumerate(typy) if t["kod"] == poprawny_kod), None)
     if not typy:
@@ -334,6 +497,7 @@ def lekcja(widoki: list, poprawny_kod: str, trafiony: bool) -> dict:
         "zagadka": pierwsza, "model": typy, "widziane": widziane, "wskazowki": wskazowki,
         "pomylony": pomylony["pl"] if pomylony else "", "roznice": roznice(k, pomylony) if pomylony else [],
         "napisy": ostatnie_napisy(),
+        "uczenie": opis_uczenia(),
         "pasujace": pasujace_reguly(ost, poprawny_kod),
         "regiony": typuj_region(ost, poprawny_kod),
         "pasujace_regionalne": pasujace_reguly(ost, poprawny_kod, 3, regionalne=True),

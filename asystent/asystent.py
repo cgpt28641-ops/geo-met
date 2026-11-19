@@ -24,6 +24,10 @@ import synchronizacja
 KOLOR_TLA = "#0f172a"
 KOLOR_TEKSTU = "#e8edf7"
 KOLOR_AKCENT = "#22c47f"
+# skróty do wyboru w ustawieniach: nazwa → wartość zapisywana w ustawieniach
+SKROTY = {**{f"F{i}": f"f{i}" for i in range(1, 13)},
+          "Mysz: boczny 1 (wstecz)": "mysz:x", "Mysz: boczny 2 (dalej)": "mysz:x2", "Mysz: środkowy (kółko)": "mysz:middle",
+          "Insert": "insert", "Home": "home", "End": "end", "Page Up": "page up", "Page Down": "page down", "Pause": "pause", "Brak": ""}
 KOLOR_SZARY = "#95a0b8"
 
 
@@ -90,14 +94,14 @@ class Asystent:
 
         dol = tk.Frame(self.root, bg=KOLOR_TLA)
         dol.pack(fill="x", padx=10, pady=8)
-        self.btn_analiza = tk.Button(dol, text="🔍 Analiza (F8)", command=self.analiza)
+        self.btn_analiza = tk.Button(dol, text="🔍 Analiza", command=self.analiza)
         self.btn_analiza.pack(side="left")
-        tk.Button(dol, text="🏁 Koniec rundy (F10)", command=self.koniec_rundy).pack(side="left", padx=6)
+        tk.Button(dol, text="🏁 Koniec rundy", command=self.koniec_rundy).pack(side="left", padx=6)
         self.lbl_koszt = tk.Label(dol, fg=KOLOR_SZARY, bg=KOLOR_TLA, font=("Segoe UI", 8))
         self.lbl_koszt.pack(side="right")
         self._odswiez_status()
-        self.pisz([("Gotowy. ", "akc"), (f"{self.cfg['skrot_koniec_rundy'].upper()} po każdej rundzie = nauka na poprawnym miejscu.\n", ""),
-                   (f"{self.cfg['skrot_podpowiedzi'].upper()} włącza podpowiedzi (tylko gra pojedyncza / trening).", "szary")])
+        self.pisz([("Gotowy. ", "akc"), (f"{self.nazwa_skrotu('skrot_koniec_rundy')} po każdej rundzie = nauka na poprawnym miejscu.\n", ""),
+                   (f"{self.nazwa_skrotu('skrot_podpowiedzi')} włącza podpowiedzi (tylko gra pojedyncza / trening).", "szary")])
 
     def rysuj_mape(self, kody: list, punkty: list) -> None:
         """Zaznacza na mapie typowane kraje (zielone, od najmocniejszego), region (pomarańczowy) i miasta (czerwone)."""
@@ -139,13 +143,37 @@ class Asystent:
 
     # ───────────── skróty globalne ─────────────
     def _podepnij_skroty(self) -> None:
+        """Globalne skróty (klawisze i przyciski myszy) działające także, gdy aktywna jest gra."""
+        akcje = {"skrot_analiza": self.analiza, "skrot_podpowiedzi": self.przelacz_podpowiedzi, "skrot_koniec_rundy": self.koniec_rundy}
+        bledy = []
         try:
-            import keyboard  # globalne skróty działające także, gdy aktywna jest gra
-            keyboard.add_hotkey(self.cfg["skrot_analiza"], lambda: self.kolejka.put(("akcja", self.analiza)))
-            keyboard.add_hotkey(self.cfg["skrot_podpowiedzi"], lambda: self.kolejka.put(("akcja", self.przelacz_podpowiedzi)))
-            keyboard.add_hotkey(self.cfg["skrot_koniec_rundy"], lambda: self.kolejka.put(("akcja", self.koniec_rundy)))
-        except Exception as e:  # brak uprawnień lub biblioteki — zostają przyciski
-            self.root.after(500, lambda: self.pisz([("Skróty klawiszowe niedostępne: ", "b"), (str(e), ""), ("\nUżywaj przycisków w okienku.", "szary")]))
+            import keyboard
+            keyboard.unhook_all_hotkeys()
+        except Exception as e:
+            keyboard = None
+            bledy.append(f"klawiatura: {e}")
+        try:
+            import mouse
+            mouse.unhook_all()
+        except Exception as e:
+            mouse = None
+            bledy.append(f"mysz: {e}")
+        for nazwa, fn in akcje.items():
+            skrot = str(self.cfg.get(nazwa, "")).strip().lower()
+            wywolaj = (lambda f=fn: self.kolejka.put(("akcja", f)))
+            try:
+                if skrot.startswith("mysz:"):
+                    if mouse:
+                        mouse.on_button(wywolaj, buttons=(skrot[5:],), types=("down",))
+                elif skrot and keyboard:
+                    keyboard.add_hotkey(skrot, wywolaj)
+            except Exception as e:
+                bledy.append(f"{skrot}: {e}")
+        if bledy:  # brak uprawnień lub biblioteki — zostają przyciski w okienku
+            self.root.after(500, lambda: self.pisz([("Część skrótów niedostępna: ", "b"), ("; ".join(bledy), ""), ("\nUżywaj przycisków w okienku.", "szary")]))
+
+    def nazwa_skrotu(self, nazwa: str) -> str:
+        return next((n for n, v in SKROTY.items() if v == str(self.cfg.get(nazwa, "")).lower()), str(self.cfg.get(nazwa, "")).upper())
 
     def _petla_zrzutow(self) -> None:
         while True:
@@ -200,7 +228,7 @@ class Asystent:
 
     def analiza(self) -> None:
         if not self.cfg.get("podpowiedzi"):
-            self.pisz([("Podpowiedzi są wyłączone. ", "b"), (f"Włącz je klawiszem {self.cfg['skrot_podpowiedzi'].upper()}.", "")])
+            self.pisz([("Podpowiedzi są wyłączone. ", "b"), (f"Włącz je klawiszem {self.nazwa_skrotu('skrot_podpowiedzi')}.", "")])
             return
         if self.lokalny:
             return self.analiza_lokalna()
@@ -261,7 +289,7 @@ class Asystent:
         self._odswiez_status()
         if w.get("tryb_rankingowy"):
             self.pisz([("Tryb rankingowy wykryty 🔒", "akc"), ("\nPodpowiedzi są tu zablokowane. Po rundzie naciśnij "
-                       f"{self.cfg['skrot_koniec_rundy'].upper()}, żeby się z niej nauczyć.", "")])
+                       f"{self.nazwa_skrotu('skrot_koniec_rundy')}, żeby się z niej nauczyć.", "")])
             return
         czesci = [("👀 Na co spojrzeć: ", "akc"), (w.get("gdzie_patrzec", "") + "\n", "")]
         if w.get("widoczne_wskazowki"):
@@ -271,7 +299,7 @@ class Asystent:
             for k in w.get("kandydaci", [])[:3]:
                 czesci += [(f" {k['kraj']} — {k['pewnosc']}%\n", "akc"), (f"   {k['dlaczego']}\n", "")]
         else:
-            czesci.append((f"\nNaciśnij {self.cfg['skrot_analiza'].upper()} jeszcze raz, żeby zobaczyć kraje.", "szary"))
+            czesci.append((f"\nNaciśnij {self.nazwa_skrotu('skrot_analiza')} jeszcze raz, żeby zobaczyć kraje.", "szary"))
         self.pisz(czesci)
 
     def koniec_rundy(self) -> None:
@@ -377,6 +405,8 @@ class Asystent:
                     czesci += [(f"\nJak odróżnić od: {lekcja['pomylony']}\n", "b")] + [(f" • {x}\n", "") for x in lekcja["roznice"]]
                 for kat, lst in lekcja["wskazowki"].items():
                     czesci += [(f"\n{kat}\n", "b")] + [(f" • {x}\n", "") for x in lst]
+                if lekcja.get("uczenie"):
+                    info += " · " + lekcja["uczenie"]
                 czesci.append(("\n" + info, "szary"))
                 self.kolejka.put(("pisz", czesci))
             self._w_tle(praca)
@@ -393,7 +423,7 @@ class Asystent:
         okno = tk.Toplevel(self.root)
         okno.title("Ustawienia — GeoMeta Asystent")
         okno.attributes("-topmost", True)
-        okno.geometry("540x540")
+        okno.geometry("540x720")
         ramka = ttk.Frame(okno, padding=14)
         ramka.pack(fill="both", expand=True)
 
@@ -412,6 +442,16 @@ class Asystent:
         nazwy = {v["nazwa"]: k for k, v in silnik.MODELE.items()}
         model = tk.StringVar(value=silnik.MODELE[self.cfg["model"]]["nazwa"])
         ttk.Combobox(ramka, textvariable=model, values=list(nazwy), state="readonly").pack(fill="x")
+        ttk.Label(ramka, text="Skróty (klawisz albo przycisk myszy):").pack(anchor="w", pady=(10, 2))
+        wiersz = ttk.Frame(ramka)
+        wiersz.pack(fill="x")
+        skroty = {}
+        for kol, (nazwa, opis) in enumerate([("skrot_analiza", "Analiza widoku"), ("skrot_podpowiedzi", "Podpowiedzi wł./wył."), ("skrot_koniec_rundy", "Koniec rundy")]):
+            ttk.Label(wiersz, text=opis).grid(row=0, column=kol, sticky="w", padx=(0, 8))
+            zm = tk.StringVar(value=self.nazwa_skrotu(nazwa))
+            ttk.Combobox(wiersz, textvariable=zm, values=list(SKROTY), state="readonly", width=20).grid(row=1, column=kol, sticky="we", padx=(0, 8))
+            skroty[nazwa] = zm
+            wiersz.columnconfigure(kol, weight=1)
         monitor = pole("Numer monitora z grą (1 = główny):", self.cfg.get("monitor", 1))
         url = pole("Adres twojej strony GeoMeta (do synchronizacji, opcjonalnie):", self.cfg.get("sync_url", ""))
         token = pole("Token synchronizacji (z panelu Cloudflare, opcjonalnie):", self.cfg.get("sync_token", ""), True)
@@ -421,6 +461,12 @@ class Asystent:
         def zapisz():
             self.cfg.update(tryb=tryby[tryb.get()], api_key=klucz.get().strip(), model=nazwy[model.get()], sync_url=url.get().strip().rstrip("/"),
                             sync_token=token.get().strip())
+            wybrane = [SKROTY.get(zm.get(), "") for zm in skroty.values()]
+            if len({w for w in wybrane if w}) < len([w for w in wybrane if w]):
+                messagebox.showwarning("GeoMeta", "Każda akcja musi mieć inny skrót.")
+                return
+            for nazwa, zm in skroty.items():
+                self.cfg[nazwa] = SKROTY.get(zm.get(), self.cfg.get(nazwa, ""))
             try:
                 self.cfg["monitor"] = max(1, int(monitor.get()))
             except ValueError:
@@ -432,6 +478,7 @@ class Asystent:
                     messagebox.showwarning("GeoMeta", powod)
             silnik.zapisz_ustawienia(self.cfg)
             okno.destroy()
+            self._podepnij_skroty()
             self._odswiez_status()
             if self.cfg.get("sync_url") and self.cfg.get("sync_token"):
                 try:
