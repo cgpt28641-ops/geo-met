@@ -11,6 +11,7 @@ import io
 import json
 import os
 import sys
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,6 +29,25 @@ def katalog_aplikacji() -> Path:
     p.mkdir(parents=True, exist_ok=True)
     (p / "historia").mkdir(exist_ok=True)
     return p
+
+
+_blokada_logu = threading.Lock()
+
+
+def log(tekst: str, blad: bool = False) -> None:
+    """Dopisuje linijkę do dane/log.txt (z godziną). blad=True dokleja pełny opis ostatniego wyjątku."""
+    try:
+        import traceback
+        plik = katalog_aplikacji() / "log.txt"
+        with _blokada_logu:
+            if plik.exists() and plik.stat().st_size > 2_000_000:   # stary log odkładamy, żeby plik nie rósł bez końca
+                plik.replace(plik.with_name("log_stary.txt"))
+            with open(plik, "a", encoding="utf-8") as f:
+                f.write(f"{dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  {tekst}\n")
+                if blad:
+                    f.write(traceback.format_exc() + "\n")
+    except Exception:
+        pass
 
 
 def katalog_zasobow() -> Path:
@@ -50,6 +70,7 @@ DOMYSLNE = {
     "auto_zrzuty": True,       # lokalne zrzuty co kilka sekund (darmowe) — do nauki po rundzie
     "co_ile_s": 2,
     "auto_kraj": True,         # poprawny kraj odczytywany z mapy wyniku
+    "porady": False,           # porady i wskazówki GeoMeta w lekcji (wyłączone = tylko to, co rozpoznał program)
     "kompakt": True,           # mała belka z typami w trakcie rundy
     "okno": "",                # zapamiętane położenie i rozmiar okienka
     "auto_koniec": True,       # tryb darmowy: sam wykrywa ekran wyniku i otwiera lekcję

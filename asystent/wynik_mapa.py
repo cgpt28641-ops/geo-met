@@ -9,6 +9,7 @@ import math
 import re
 
 import mapa
+import silnik
 import silnik_lokalny
 
 
@@ -78,6 +79,7 @@ def odczytaj(img, typy_modelu: list[str] | None = None) -> dict | None:
     nazwy_krajow = {silnik_lokalny._uprosc(k["pl"]): k["id"] for k in silnik_lokalny.kraje()}
     w, h = img.size
     odczyty = silnik_lokalny.czytnik().readtext(np.asarray(img.convert("RGB")))
+    silnik.log(f"mapa wyniku: zrzut {w}x{h} · pinezka {pinezka(img)} · odczytane napisy ({len(odczyty)}): " + " | ".join(f"{t} [{int(pole[0][0])},{int(pole[0][1])}]" for pole, t, pw in odczyty[:60]))
 
     # odległość gracza: pierwszy od lewej napis „… km” w górnej części ekranu
     km = []

@@ -36,6 +36,14 @@ KOLOR_SZARY = "#95a0b8"
 class Asystent:
     def __init__(self) -> None:
         self.cfg = silnik.wczytaj_ustawienia()
+        try:
+            import platform
+            import sys
+            jawne = {k: v for k, v in self.cfg.items() if k not in ("api_key", "sync_token", "sync_url")}
+            silnik.log(f"════ START · Python {sys.version.split()[0]} · {platform.platform()} · folder danych: {silnik.katalog_aplikacji()}")
+            silnik.log(f"ustawienia: {jawne}")
+        except Exception:
+            pass
         self.silnik = silnik.Silnik(self.cfg)
         self.widoki: deque = deque(maxlen=30)      # różniące się widoki z rundy: (obraz, odcisk)
         self.kolejka: queue.Queue = queue.Queue()  # wyniki z wątków roboczych → okno
@@ -91,6 +99,7 @@ class Asystent:
         self.lbl_tryb = tk.Label(gora, fg=KOLOR_SZARY, bg=KOLOR_TLA, font=("Segoe UI", 9))
         self.lbl_tryb.pack(side="left", padx=8)
         tk.Button(gora, text="⚙", command=self.ustawienia, bg=KOLOR_TLA, fg=KOLOR_TEKSTU, bd=0, font=("Segoe UI", 11)).pack(side="right")
+        tk.Button(gora, text="📄", command=self._otworz_log, bg=KOLOR_TLA, fg=KOLOR_TEKSTU, bd=0, font=("Segoe UI", 11)).pack(side="right")
         tk.Button(gora, text="📊", command=self.raport, bg=KOLOR_TLA, fg=KOLOR_TEKSTU, bd=0, font=("Segoe UI", 11)).pack(side="right")
         tk.Button(gora, text="↕", command=lambda: self.ustaw_widok(not self.pelny_widok), bg=KOLOR_TLA, fg=KOLOR_TEKSTU, bd=0, font=("Segoe UI", 11)).pack(side="right")
 
@@ -180,6 +189,14 @@ class Asystent:
         k = self.silnik.koszt
         self.lbl_koszt.config(text=("tryb darmowy · 0 zł" + (" · " + self.pamiec if self.pamiec else "")) if self.lokalny else f"{k.wywolania} analiz · ~{k.pln:.2f} zł")
 
+    def _otworz_log(self) -> None:
+        try:
+            import os
+            silnik.log("otwarto log z okienka")
+            os.startfile(silnik.katalog_aplikacji() / "log.txt")
+        except Exception:
+            pass
+
     def _otworz_pamiec(self) -> None:
         try:
             import os
@@ -239,7 +256,7 @@ class Asystent:
         self._podpiete = []
         for nazwa, fn in akcje.items():
             skrot = str(self.cfg.get(nazwa, "")).strip().lower()
-            wywolaj = (lambda f=fn: self.kolejka.put(("akcja", f)))
+            wywolaj = (lambda f=fn, n=nazwa: (silnik.log(f"naciśnięto skrót {n}"), self.kolejka.put(("akcja", f))))
             try:
                 if skrot.startswith("mysz:"):
                     if mouse:
@@ -248,6 +265,7 @@ class Asystent:
                     self._podpiete.append(("k", keyboard.add_hotkey(skrot, wywolaj)))
             except Exception as e:
                 bledy.append(f"{skrot}: {e}")
+        silnik.log(f"skróty: podpięte {len(self._podpiete)} z {len(akcje)} · " + ", ".join(f"{n}={self.cfg.get(n)!r}" for n in akcje) + (f" · błędy: {bledy}" if bledy else ""))
         if bledy:  # brak uprawnień lub biblioteki — zostają przyciski w okienku
             self.root.after(500, lambda: self.pisz([("Część skrótów niedostępna: ", "b"), ("; ".join(bledy), ""), ("\nUżywaj przycisków w okienku.", "szary")]))
 
@@ -321,11 +339,17 @@ class Asystent:
         self.root.after(10000, lambda: zakoncz(""))   # po 10 s bez naciśnięcia nagrywanie się wyłącza
 
     def _petla_zrzutow(self) -> None:
+        ostatni_log, bledy = 0.0, 0
         while True:
             try:
                 if not self.zajety:
                     zrzut = silnik.zrob_zrzut(self.cfg.get("monitor", 1))
                     ekran = silnik.rodzaj_ekranu(zrzut)
+                    if ekran != self.ostatni_ekran:
+                        silnik.log(f"ekran: {self.ostatni_ekran} → {ekran} · zrzut {zrzut.size[0]}x{zrzut.size[1]} · widoków {len(self.widoki)} · pojedynek {silnik.czy_pojedynek(zrzut)}")
+                    elif time.time() - ostatni_log > 30:   # co pół minuty znak życia
+                        ostatni_log = time.time()
+                        silnik.log(f"pętla zrzutów działa · ekran {ekran} · widoków {len(self.widoki)}")
                     if ekran == "runda":
                         if self.ostatni_ekran != "runda":
                             self.widoki.clear()   # zaczęła się nowa runda
@@ -333,11 +357,17 @@ class Asystent:
                         # zapisujemy tylko widoki wyraźnie różne od poprzedniego (inny kierunek lub miejsce)
                         if not self.widoki or silnik.roznica_klatek(odcisk, self.widoki[-1][1]) > 9:
                             self.widoki.append((zrzut, odcisk))
-                    elif ekran == "wynik" and self.ostatni_ekran == "runda" and self.lokalny and self.cfg.get("auto_koniec", True) and self.widoki:
-                        self.kolejka.put(("akcja", lambda z=zrzut: self.koniec_rundy_lokalnie(z)))
+                    elif ekran == "wynik" and self.ostatni_ekran == "runda":
+                        if self.lokalny and self.cfg.get("auto_koniec", True) and self.widoki:
+                            silnik.log("wykryto ekran wyniku → uruchamiam lekcję")
+                            self.kolejka.put(("akcja", lambda z=zrzut: self.koniec_rundy_lokalnie(z)))
+                        else:
+                            silnik.log(f"ekran wyniku, ale lekcja nie ruszyła: tryb lokalny {self.lokalny}, auto_koniec {self.cfg.get('auto_koniec', True)}, widoków {len(self.widoki)}")
                     self.ostatni_ekran = ekran
             except Exception:
-                pass
+                bledy += 1
+                if bledy <= 5 or bledy % 50 == 0:
+                    silnik.log(f"BŁĄD w pętli zrzutów (nr {bledy})", blad=True)
             time.sleep(max(1, int(self.cfg.get("co_ile_s", 2))))
 
     def _obsluz_kolejke(self) -> None:
@@ -348,7 +378,7 @@ class Asystent:
                     try:
                         dane()
                     except Exception:
-                        traceback.print_exc()
+                        silnik.log("BŁĄD", blad=True)
                 elif rodzaj == "pisz":
                     self.pisz(dane)
                     self._odswiez_status()
@@ -362,10 +392,12 @@ class Asystent:
         self.zajety = True
 
         def praca():
+            start = time.time()
             try:
                 fn()
+                silnik.log(f"praca w tle zakończona po {time.time() - start:.1f} s")
             except Exception as e:
-                traceback.print_exc()
+                silnik.log("BŁĄD", blad=True)
                 self.kolejka.put(("pisz", [("Błąd: ", "b"), (str(e), "")]))
             finally:
                 self.zajety = False
@@ -410,9 +442,11 @@ class Asystent:
             self.pisz([("Błąd zrzutu ekranu: ", "b"), (str(e), "")])
             return
         if silnik.czy_pojedynek(zrzut) or any(silnik.czy_pojedynek(w[0]) for w in list(self.widoki)[-2:]):
+            silnik.log("analiza: wykryto pojedynek — podpowiedź zablokowana")
             self.pisz([("Pojedynek wykryty 🔒", "akc"), ("\nPodpowiedzi są tu zablokowane. Po rundzie dostaniesz lekcję.", "")])
             return
         if silnik.rodzaj_ekranu(zrzut) != "runda":
+            silnik.log(f"analiza: zrzut {zrzut.size} nie wygląda na rundę (rozpoznano: {silnik.rodzaj_ekranu(zrzut)})")
             self.pisz([("To nie wygląda na widok z rundy.", "szary")])
             return
         self.pisz([("Analizuję widok (model lokalny)…", "szary")])
@@ -430,7 +464,8 @@ class Asystent:
             czesci.append(("\nNajbardziej prawdopodobne:\n", "b"))
             for t in typy:
                 czesci.append((f" {t['kraj']} — {t['pewnosc']}%\n", "akc"))
-                czesci += [(f"   • sprawdź: {r}\n", "") for r in silnik_lokalny.pasujace_reguly(widoki, t["kod"], 2)]
+                if self.cfg.get("porady", False):
+                    czesci += [(f"   • sprawdź: {r}\n", "") for r in silnik_lokalny.pasujace_reguly(widoki, t["kod"], 2)]
             regiony = silnik_lokalny.typuj_region(widoki, typy[0]["kod"], 2) if typy else []
             self.kolejka.put(("akcja", lambda: self.rysuj_mape([t["kod"] for t in typy], self._punkty_mapy(regiony, napisy))))
             belka = "   ".join(f"{i + 1}. {t['kraj']} {t['pewnosc']}%" for i, t in enumerate(typy))
@@ -495,6 +530,7 @@ class Asystent:
         if self.zajety or (self.okno_rundy is not None and self.okno_rundy.winfo_exists()):
             return
         widoki = silnik.wybierz_rozne(list(self.widoki), 6)
+        silnik.log(f"koniec rundy (lokalnie): widoków zapamiętanych {len(self.widoki)}, do analizy {len(widoki)}, zrzut wyniku {'z pętli' if wynik is not None else 'robię teraz'}")
         if wynik is None:
             try:
                 wynik = silnik.zrob_zrzut(self.cfg.get("monitor", 1))
@@ -502,6 +538,7 @@ class Asystent:
                 self.pisz([("Błąd zrzutu ekranu: ", "b"), (str(e), "")])
                 return
         if not (self.cfg.get("auto_kraj", True) and silnik_lokalny.napisy_dostepne() and silnik.rodzaj_ekranu(wynik) == "wynik"):
+            silnik.log(f"koniec rundy: pytam o kraj ręcznie · auto_kraj {self.cfg.get('auto_kraj', True)} · czytanie napisów {silnik_lokalny.napisy_dostepne()} · ekran {silnik.rodzaj_ekranu(wynik)}")
             return self._pytaj_o_kraj(widoki, wynik)
         self.ustaw_widok(True)
         self.pisz([("Czytam mapę wyniku…", "szary"), ("\nPierwsze uruchomienie pobiera modele — to może potrwać kilka minut.", "szary")])
@@ -511,8 +548,9 @@ class Asystent:
             try:
                 odczyt = wynik_mapa.odczytaj(wynik, [t["kod"] for t in typy])
             except Exception:
-                traceback.print_exc()
+                silnik.log("BŁĄD odczytu mapy wyniku", blad=True)
                 odczyt = None
+            silnik.log(f"typy modelu: {typy} · odczyt mapy: {odczyt}")
             if odczyt and odczyt.get("pewny"):
                 self._zrob_lekcje(widoki, wynik, odczyt["kod"], None, odczyt, typy)
             else:  # niepewne — okienko z wpisanym krajem do potwierdzenia
@@ -564,8 +602,10 @@ class Asystent:
 
     def _zrob_lekcje(self, widoki: list, wynik, kod: str, ok: bool | None, odczyt: dict | None, typy: list | None) -> None:
         """Liczy lekcję (w wątku roboczym), zapisuje rundę i pokazuje wynik."""
-        lekcja = silnik_lokalny.lekcja(widoki, kod, ok, odczyt, typy)
+        porady = bool(self.cfg.get("porady", False))
+        lekcja = silnik_lokalny.lekcja(widoki, kod, ok, odczyt, typy, porady)
         wpis = silnik.zapisz_runde(lekcja, widoki, wynik)
+        silnik.log(f"lekcja: kraj {kod} · potwierdzenie gracza {ok} · miejsce {lekcja.get('miejsce')!r} · odległość {lekcja.get('odleglosc_km')} · model {lekcja.get('model')} · regiony {lekcja.get('regiony')} · pliki {wpis.get('pliki')}")
         info = f"model lokalny · {silnik_lokalny.urzadzenie()} · 0 zł"
         if self.cfg.get("sync_url") and self.cfg.get("sync_token"):
             try:
@@ -590,19 +630,19 @@ class Asystent:
             czesci += [("\nDodatkowe reguły:\n", "b")] + [(f" • {d}\n", "") for d in lekcja["dodatki"]]
         if lekcja["widziane"]:
             czesci += [("\nModel zauważył na zrzutach (sprawdź sam):\n", "b")] + [(f" • {w['widac']} ({w['pewnosc']}%) → {w['regula']}\n", "") for w in lekcja["widziane"]]
-        if lekcja["pasujace"]:
+        if porady and lekcja["pasujace"]:
             czesci += [("\nReguły GeoMeta najlepiej pasujące do tych widoków:\n", "b")] + [(f" • {x}\n", "") for x in lekcja["pasujace"]]
         if lekcja["regiony"]:
             czesci += [("\nGdzie w tym kraju:\n", "b")] + [(f" • {r['region']} — {r['pewnosc']}%\n", "") for r in lekcja["regiony"]]
-        if lekcja["pasujace_regionalne"]:
+        if porady and lekcja["pasujace_regionalne"]:
             czesci += [("\nWskazówki regionalne pasujące do widoków:\n", "b")] + [(f" • {x}\n", "") for x in lekcja["pasujace_regionalne"]]
-        if lekcja["pasujace_pomylony"]:
+        if porady and lekcja["pasujace_pomylony"]:
             czesci += [(f"\nDlaczego model myślał o: {lekcja['pomylony']}\n", "b")] + [(f" • {x}\n", "") for x in lekcja["pasujace_pomylony"]]
-        if lekcja["przeoczone"]:
+        if porady and lekcja["przeoczone"]:
             czesci += [("\nZłote wskazówki:\n", "b")] + [(f" • {x}\n", "") for x in lekcja["przeoczone"]]
-        if lekcja["roznice"]:
+        if porady and lekcja["roznice"]:
             czesci += [(f"\nJak odróżnić od: {lekcja['pomylony']}\n", "b")] + [(f" • {x}\n", "") for x in lekcja["roznice"]]
-        for kat, lst in lekcja["wskazowki"].items():
+        for kat, lst in (lekcja["wskazowki"].items() if porady else ()):
             czesci += [(f"\n{kat}\n", "b")] + [(f" • {x}\n", "") for x in lst]
         if lekcja.get("uczenie"):
             info += " · " + lekcja["uczenie"]
@@ -659,6 +699,8 @@ class Asystent:
         tk.Scale(ramka, from_=1, to=10, orient="horizontal", variable=odstep, showvalue=True).pack(fill="x")
         kompakt = tk.BooleanVar(value=bool(self.cfg.get("kompakt", True)))
         ttk.Checkbutton(ramka, text="Kompaktowy widok w trakcie rundy (pełna lekcja po rundzie)", variable=kompakt).pack(anchor="w")
+        porady_zm = tk.BooleanVar(value=bool(self.cfg.get("porady", False)))
+        ttk.Checkbutton(ramka, text="Pokazuj w lekcji porady i wskazówki GeoMeta (wyłączone = tylko to, co rozpoznał program)", variable=porady_zm).pack(anchor="w")
         auto_kraj = tk.BooleanVar(value=bool(self.cfg.get("auto_kraj", True)))
         ttk.Checkbutton(ramka, text="Sam odczytuj poprawny kraj z mapy wyniku", variable=auto_kraj).pack(anchor="w")
         monitor = pole("Numer monitora z grą (1 = główny):", self.cfg.get("monitor", 1))
@@ -669,7 +711,7 @@ class Asystent:
 
         def zapisz():
             self.cfg.update(tryb=tryby[tryb.get()], api_key=klucz.get().strip(), model=nazwy[model.get()], sync_url=url.get().strip().rstrip("/"),
-                            sync_token=token.get().strip(), co_ile_s=int(odstep.get()), kompakt=bool(kompakt.get()), auto_kraj=bool(auto_kraj.get()))
+                            sync_token=token.get().strip(), co_ile_s=int(odstep.get()), kompakt=bool(kompakt.get()), auto_kraj=bool(auto_kraj.get()), porady=bool(porady_zm.get()))
             wybrane = [self._wartosc_skrotu(zm.get()) for zm in skroty.values()]
             if len({w for w in wybrane if w}) < len([w for w in wybrane if w]):
                 messagebox.showwarning("GeoMeta", "Każda akcja musi mieć inny skrót.")

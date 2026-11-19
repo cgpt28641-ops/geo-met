@@ -43,6 +43,11 @@ def _zaladuj():
         t = model.text_projection(model.text_model(**wej).pooler_output)
         t = t / t.norm(dim=-1, keepdim=True)
     _stan.update(model=model, proc=proc, tekst=t, urz=urz, torch=torch)
+    try:
+        karta = torch.cuda.get_device_name(0) if urz == "cuda" else "brak (procesor)"
+        silnik.log(f"model wczytany · torch {torch.__version__} · urządzenie {urz} · karta: {karta} · czytanie napisów: {napisy_dostepne()}")
+    except Exception:
+        pass
 
 
 def urzadzenie() -> str:
@@ -354,7 +359,7 @@ def typuj(obrazy: list, ile: int = 5, uzyj_napisow: bool = True) -> list[dict]:
             p = p * torch.exp(_poprawka(_osadz(obrazy)))
             p = p / p.sum()
     except Exception:
-        pass
+        silnik.log("BŁĄD w typowaniu (pomijam ten krok)", blad=True)
     napisy = czytaj_napisy(obrazy[-3:], [lista[i]["id"] for i in p.topk(6).indices.tolist()]) if uzyj_napisow else []
     if napisy:
         for n in napisy:  # reguła z napisu podbija pasujące kraje (miasto najmocniej)
@@ -374,7 +379,7 @@ def typuj(obrazy: list, ile: int = 5, uzyj_napisow: bool = True) -> list[dict]:
             p = p / p.sum()
             dodatki.append(pk["opis"])
     except Exception:
-        pass
+        silnik.log("BŁĄD w typowaniu (pomijam ten krok)", blad=True)
     try:  # samochód Google widoczny na dole zrzutu
         auto = samochod(obrazy)
         for a in auto:
@@ -385,10 +390,13 @@ def typuj(obrazy: list, ile: int = 5, uzyj_napisow: bool = True) -> list[dict]:
                 p = p / p.sum()
             dodatki.append(f"Na dole zrzutu widać: {a['widac']} ({a['pewnosc']}%). Takie auto jeździło m.in. w: {a['kraje']}.")
     except Exception:
-        pass
+        silnik.log("BŁĄD w typowaniu (pomijam ten krok)", blad=True)
     _stan["ostatnie_dodatki"] = dodatki
     top = p.topk(ile)
-    return [{"kod": lista[i]["id"], "kraj": lista[i]["pl"], "pewnosc": round(float(v) * 100)} for v, i in zip(top.values, top.indices)]
+    wynik = [{"kod": lista[i]["id"], "kraj": lista[i]["pl"], "pewnosc": round(float(v) * 100)} for v, i in zip(top.values, top.indices)]
+    silnik.log(f"typuj: {len(obrazy)} widoków {[o.size for o in obrazy][:2]} · {_stan['urz']} · " + ", ".join(f"{t['kod']} {t['pewnosc']}%" for t in wynik)
+               + f" · napisy {[(n['napis'], n['powod'], n['kody'][:4]) for n in napisy]} · dodatki {dodatki}")
+    return wynik
 
 
 def ostatnie_dodatki() -> list[str]:
@@ -700,7 +708,7 @@ def _najblizsze_miasto(kod: str, lat: float, lon: float):
         return None
 
 
-def lekcja(widoki: list, poprawny_kod: str, trafiony: bool | None, odczyt: dict | None = None, typy: list | None = None) -> dict:
+def lekcja(widoki: list, poprawny_kod: str, trafiony: bool | None, odczyt: dict | None = None, typy: list | None = None, porady: bool = False) -> dict:
     """Lekcja po rundzie: typy modelu, reguły sprawdzone na zrzutach i wskazówki GeoMeta dla poprawnego kraju.
 
     odczyt — wynik wynik_mapa.odczytaj (miejsce i odległość gracza z ekranu wyniku); typy — typy modelu policzone wcześniej.
@@ -748,13 +756,13 @@ def lekcja(widoki: list, poprawny_kod: str, trafiony: bool | None, odczyt: dict 
     return {
         "tryb_rankingowy": False, "poprawny_kod": poprawny_kod, "poprawny_kraj": k["pl"], "miejsce": miejsce, "punkt": punkt,
         "twoj_strzal": strzal, "trafiony_kraj": trafiony, "odleglosc_km": odl,
-        "lekcja": f"{k['summary']} {ocena}", "przeoczone": k["tips"][:3],
+        "lekcja": f"{k['summary']} {ocena}" if porady else ocena, "przeoczone": k["tips"][:3],
         "zagadka": pierwsza, "model": typy, "widziane": widziane, "wskazowki": wskazowki,
         "pomylony": pomylony["pl"] if pomylony else "", "roznice": roznice(k, pomylony) if pomylony else [],
         "napisy": napisy, "dodatki": dodatki,
         "uczenie": opis_uczenia(),
-        "pasujace": pasujace_reguly(ost, poprawny_kod),
+        "pasujace": pasujace_reguly(ost, poprawny_kod) if porady else [],
         "regiony": regiony,
-        "pasujace_regionalne": pasujace_reguly(ost, poprawny_kod, 3, regionalne=True),
-        "pasujace_pomylony": pasujace_reguly(ost, pomylony["id"], 2) if pomylony else [],
+        "pasujace_regionalne": pasujace_reguly(ost, poprawny_kod, 3, regionalne=True) if porady else [],
+        "pasujace_pomylony": pasujace_reguly(ost, pomylony["id"], 2) if pomylony and porady else [],
     }
