@@ -51,6 +51,7 @@ class Asystent:
         self.odkryte = False
         self.zajety = False
         self.ostatni_ekran = "runda"
+        self.runda_zamknieta = False   # po wyniku/lekcji: kolejny widok z ulicy zaczyna nową rundę
         self.okno_rundy = None
 
         self.root = tk.Tk()
@@ -374,39 +375,58 @@ class Asystent:
             return
         self.root.after(10000, lambda: zakoncz(""))   # po 10 s bez naciśnięcia nagrywanie się wyłącza
 
+    def _rozpoznaj_ekran(self, zrzut) -> str:
+        """'runda', 'wynik', 'podsumowanie' albo 'mapa' (mapa otwarta w trakcie rundy — taki zrzut pomijamy)."""
+        ekran = silnik.rodzaj_ekranu(zrzut)
+        if ekran == "mapa":   # duża mapa bez paska wyniku: wynikiem jest tylko wtedy, gdy stoi na niej pinezka poprawnego miejsca
+            pin = wynik_mapa.pinezka(zrzut)
+            w, h = zrzut.size
+            if pin and h * 0.22 < pin[1] < h * 0.97 and w * 0.02 < pin[0] < w * 0.98:
+                return "wynik"
+        return ekran
+
     def _petla_zrzutow(self) -> None:
-        ostatni_log, bledy = 0.0, 0
+        ostatni_log, bledy, z_rzedu = 0.0, 0, 0
         while True:
             try:
                 if not self.zajety:
                     zrzut = self._zrzut()
-                    ekran = silnik.rodzaj_ekranu(zrzut)
+                    ekran = self._rozpoznaj_ekran(zrzut)
                     if ekran != self.ostatni_ekran:
                         silnik.log(f"ekran: {self.ostatni_ekran} → {ekran} · zrzut {zrzut.size[0]}x{zrzut.size[1]} · widoków {len(self.widoki)} · pojedynek {self._pojedynek(zrzut)}")
                     elif time.time() - ostatni_log > 30:   # co pół minuty znak życia
                         ostatni_log = time.time()
                         silnik.log(f"pętla zrzutów działa · ekran {ekran} · widoków {len(self.widoki)}")
                     if ekran == "runda":
-                        if self.ostatni_ekran != "runda":
-                            self.widoki.clear()   # zaczęła się nowa runda
+                        z_rzedu += 1
+                        if self.runda_zamknieta and z_rzedu >= 2:
+                            self.widoki.clear()   # po wyniku lub podsumowaniu zaczęła się nowa runda
+                            self.runda_zamknieta = False
+                            silnik.log("nowa runda — widoki wyczyszczone")
                         odcisk = silnik.podpis_klatki(zrzut)
-                        # zapisujemy tylko widoki wyraźnie różne od poprzedniego (inny kierunek lub miejsce)
-                        if not self.widoki or silnik.roznica_klatek(odcisk, self.widoki[-1][1]) > 9:
+                        # do widoków trafiają tylko czyste zrzuty z ulicy (druga klatka z rzędu, bez dużej mapy), wyraźnie różne od poprzedniego
+                        if z_rzedu >= 2 and silnik.czysty_widok(zrzut) and (not self.widoki or silnik.roznica_klatek(odcisk, self.widoki[-1][1]) > 9):
                             self.widoki.append((zrzut, odcisk))
-                    elif ekran == "wynik" and self.ostatni_ekran == "runda":
-                        if self.lokalny and self.cfg.get("auto_koniec", True) and self.widoki:
+                    else:
+                        z_rzedu = 0
+                    if ekran == "podsumowanie":
+                        self.runda_zamknieta = True
+                    elif ekran == "wynik" and self.ostatni_ekran != "wynik" and not self.runda_zamknieta:
+                        if self.lokalny and self.cfg.get("auto_koniec", True) and len(self.widoki) >= 2:
                             time.sleep(3)     # mapa wyniku najpierw się animuje; pinezka i odległość pojawiają się po chwili
                             pozniej = self._zrzut()
-                            if silnik.rodzaj_ekranu(pozniej) == "wynik":
-                                zrzut = pozniej
+                            if self._rozpoznaj_ekran(pozniej) == "wynik":
+                                self.runda_zamknieta = True
                                 silnik.log("wykryto ekran wyniku → uruchamiam lekcję (zrzut po 3 s)")
-                                self.kolejka.put(("akcja", lambda z=zrzut: self.koniec_rundy_lokalnie(z)))
+                                self.kolejka.put(("akcja", lambda z=pozniej: self.koniec_rundy_lokalnie(z)))
                             else:
-                                ekran = silnik.rodzaj_ekranu(pozniej)
-                                silnik.log(f"ekran wyniku zniknął po 3 s (teraz: {ekran}) — to nie był koniec rundy")
+                                ekran = self.ostatni_ekran
+                                silnik.log("ekran wyniku zniknął po 3 s — to nie był koniec rundy")
                         else:
+                            self.runda_zamknieta = True
                             silnik.log(f"ekran wyniku, ale lekcja nie ruszyła: tryb lokalny {self.lokalny}, auto_koniec {self.cfg.get('auto_koniec', True)}, widoków {len(self.widoki)}")
-                    self.ostatni_ekran = ekran
+                    if ekran != "mapa":      # mapa otwarta w trakcie rundy niczego nie zmienia
+                        self.ostatni_ekran = ekran
             except Exception:
                 bledy += 1
                 if bledy <= 5 or bledy % 50 == 0:
@@ -580,7 +600,7 @@ class Asystent:
             except Exception as e:
                 self.pisz([("Błąd zrzutu ekranu: ", "b"), (str(e), "")])
                 return
-        if not (self.cfg.get("auto_kraj", True) and silnik_lokalny.napisy_dostepne() and silnik.rodzaj_ekranu(wynik) == "wynik"):
+        if not (self.cfg.get("auto_kraj", True) and silnik_lokalny.napisy_dostepne() and silnik.rodzaj_ekranu(wynik) in ("wynik", "mapa")):
             silnik.log(f"koniec rundy: pytam o kraj ręcznie · auto_kraj {self.cfg.get('auto_kraj', True)} · czytanie napisów {silnik_lokalny.napisy_dostepne()} · ekran {silnik.rodzaj_ekranu(wynik)}")
             return self._pytaj_o_kraj(widoki, wynik)
         self.ustaw_widok(True)
@@ -649,7 +669,7 @@ class Asystent:
         porady = bool(self.cfg.get("porady", False))
         lekcja = silnik_lokalny.lekcja(widoki, kod, ok, odczyt, typy, porady)
         wpis = silnik.zapisz_runde(lekcja, widoki, wynik)
-        self.widoki.clear()     # runda zamknięta: następna analiza nie może korzystać z jej widoków
+        self.runda_zamknieta = True     # następny widok z ulicy zaczyna nową rundę (wtedy widoki się wyczyszczą)
         silnik.log(f"lekcja: kraj {kod} · potwierdzenie gracza {ok} · miejsce {lekcja.get('miejsce')!r} · odległość {lekcja.get('odleglosc_km')} · model {lekcja.get('model')} · regiony {lekcja.get('regiony')} · pliki {wpis.get('pliki')}")
         info = f"model lokalny · {silnik_lokalny.urzadzenie()} · 0 zł"
         if self.cfg.get("sync_url") and self.cfg.get("sync_token"):

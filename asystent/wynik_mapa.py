@@ -90,6 +90,8 @@ def odczytaj(img, typy_modelu: list[str] | None = None) -> dict | None:
     odleglosc = min(km)[1] if km else None
 
     pin = pinezka(img)
+    if pin and not (h * 0.22 < pin[1] < h * 0.97 and w * 0.02 < pin[0] < w * 0.98):
+        pin = None
     kotwice = []  # (x, y, lon, lat, waga, czy_miasto)
     for pole, tekst, pw in odczyty:
         if pw < 0.4 or pole[0][1] < h * 0.22:
@@ -110,14 +112,31 @@ def odczytaj(img, typy_modelu: list[str] | None = None) -> dict | None:
             A += [[waga * math.radians(lon), waga, 0], [-waga * _mercator(lat), 0, waga]]
             B += [waga * x, waga * y]
         return np.linalg.lstsq(np.array(A), np.array(B), rcond=None)[0]
+    def blad(k, s, tx, ty):
+        return math.hypot(s * math.radians(k[2]) + tx - k[0], -s * _mercator(k[3]) + ty - k[1])
+
+    # Część napisów to pomyłki (np. Córdoba czy Santa Fe są na kilku kontynentach), więc szukamy takiego ułożenia mapy,
+    # z którym zgadza się najwięcej napisów: próbujemy każdą parę i liczymy, ile pozostałych do niej pasuje.
+    najl = None
+    for i in range(len(kotwice)):
+        for j in range(i + 1, len(kotwice)):
+            a, b = kotwice[i], kotwice[j]
+            if math.hypot(a[0] - b[0], a[1] - b[1]) < 60:
+                continue
+            try:
+                s, tx, ty = dopasuj([a, b])
+            except Exception:
+                continue
+            if not (s > 0):
+                continue
+            zgodne = [k for k in kotwice if blad(k, s, tx, ty) <= (30 if k[5] else 160)]
+            ocena = sum(1.0 if k[5] else 0.3 for k in zgodne)
+            if najl is None or ocena > najl[0]:
+                najl = (ocena, zgodne)
+    if najl is None or len(najl[1]) < 2:
+        return {"kod": None, "pewny": False, "odleglosc_km": odleglosc, "miasta": 0, "powod": "nie udało się dopasować mapy"}
+    kotwice = najl[1]
     s, tx, ty = dopasuj(kotwice)
-    # odrzuć napisy, które nie pasują do reszty (np. miasto o tej samej nazwie na innym kontynencie) i policz jeszcze raz
-    bledy = [math.hypot(s * math.radians(lon) + tx - x, -s * _mercator(lat) + ty - y) for x, y, lon, lat, _, _ in kotwice]
-    prog = max(40.0, 3 * sorted(bledy)[len(bledy) // 2])
-    dobre = [k for k, e in zip(kotwice, bledy) if e <= prog or not k[5]]
-    if len(dobre) >= 2 and len(dobre) < len(kotwice):
-        kotwice = dobre
-        s, tx, ty = dopasuj(kotwice)
     if s <= 0:
         return {"kod": None, "pewny": False, "odleglosc_km": odleglosc, "miasta": 0, "powod": "nie udało się dopasować mapy"}
     lon = math.degrees((pin[0] - tx) / s)

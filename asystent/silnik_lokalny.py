@@ -227,17 +227,28 @@ def czytaj_napisy(obrazy: list, kandydaci: list | None = None) -> list[dict]:
         if zapamietane is not None and zapamietane[0] is img0:
             odczyty = zapamietane[1]
         else:
-            odczyty = [(t, float(pw)) for _, t, pw in ocr.readtext(px)]
-            try:  # drugi etap: małe pola tekstu powiększone 4x
-                pola = ocr.detect(px, text_threshold=0.5, low_text=0.3)[0][0]
+            pierwsze = ocr.readtext(px, text_threshold=0.5, low_text=0.3)
+            odczyty = [(t, float(pw)) for _, t, pw in pierwsze]
+            try:  # drugi etap: małe napisy powiększone 4x i sklejone w jeden obraz, czytane za jednym razem (szybciej niż każdy osobno)
                 czyste = Image.fromarray(px)
-                male = [q for q in pola if q[3] - q[2] <= 34 and q[1] - q[0] >= 14]
-                for x0, x1, y0, y1 in male[:14]:
-                    c = czyste.crop((max(0, int(x0) - 8), max(0, int(y0) - 8), int(x1) + 8, int(y1) + 8))
-                    c = c.resize((c.width * 4, c.height * 4), Image.LANCZOS)
-                    odczyty += [(t, float(pw) * 0.9) for _, t, pw in ocr.readtext(np.asarray(c))]
+                wycinki = []
+                for ramka, _, _ in pierwsze:
+                    x0, x1 = min(q[0] for q in ramka), max(q[0] for q in ramka)
+                    y0, y1 = min(q[1] for q in ramka), max(q[1] for q in ramka)
+                    if y1 - y0 <= 34 and x1 - x0 >= 14:
+                        c = czyste.crop((max(0, int(x0) - 8), max(0, int(y0) - 8), int(x1) + 8, int(y1) + 8))
+                        wycinki.append(c.resize((c.width * 4, c.height * 4), Image.LANCZOS))
+                wycinki = wycinki[:24]
+                if wycinki:
+                    szer = max(c.width for c in wycinki) + 40
+                    arkusz = Image.new("RGB", (szer, sum(c.height + 40 for c in wycinki) + 40), (0, 0, 0))
+                    y = 40
+                    for c in wycinki:
+                        arkusz.paste(c, (20, y))
+                        y += c.height + 40
+                    odczyty += [(t, float(pw) * 0.9) for _, t, pw in ocr.readtext(np.asarray(arkusz))]
             except Exception:
-                pass
+                silnik.log("BŁĄD przy powiększaniu napisów", blad=True)
             if len(_pamiec_ocr) > 60:
                 _pamiec_ocr.clear()
             _pamiec_ocr[id(img0)] = (img0, odczyty)

@@ -125,19 +125,35 @@ def plaskie_pola(img: Image.Image):
     return (b.max(2) - b.min(2)).max(2) <= 8
 
 
-def czy_mapa(img: Image.Image) -> bool:
-    """Czy dolną, lewą i środkową część ekranu zajmuje mapa (duże jednolite plamy koloru), a nie widok z ulicy.
+def kolory_mapy(img: Image.Image) -> float:
+    """Jaką część dolnej połowy ekranu zajmują kolory mapy Google (niebieska woda, pastelowo zielony ląd). Niebo jest wyżej, więc go nie liczymy."""
+    import numpy as np
+    a = np.asarray(img.convert("RGB").resize((160, 90))).astype(np.int16)[40:86, 6:154]
+    r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    woda = (r > 125) & (r < 170) & (g > 168) & (g < 205) & (b > 232)
+    lad = (r > 135) & (r < 208) & (g > 200) & (g < 240) & (b > 150) & (b < 215) & (g - r > 18) & (g - b > 12)
+    return float((woda | lad).mean())
 
-    Prawy dolny róg pomijamy, bo tam w trakcie rundy bywa powiększona minimapa.
-    """
+
+def czysty_widok(img: Image.Image) -> bool:
+    """Czy to zwykły widok z ulicy, bez dużej mapy na ekranie (tylko takie zrzuty trafiają do widoków z rundy)."""
     try:
-        return float(plaskie_pola(img)[12:25, 4:30].mean()) >= 0.38
+        return kolory_mapy(img) < 0.10 and float(plaskie_pola(img)[8:25, 3:36].mean()) < 0.30
+    except Exception:
+        return True
+
+
+def czy_mapa(img: Image.Image) -> bool:
+    """Czy dużą część ekranu zajmuje mapa (kolory mapy albo duże jednolite plamy), a nie widok z ulicy."""
+    try:
+        return kolory_mapy(img) >= 0.35 or float(plaskie_pola(img)[12:25, 4:30].mean()) >= 0.38
     except Exception:
         return False
 
 
 def rodzaj_ekranu(img: Image.Image) -> str:
-    """Rozpoznaje po kolorach: 'wynik' (fioletowy pasek u góry + mapa), 'podsumowanie' (cały fioletowy) albo 'runda'."""
+    """Rozpoznaje po kolorach: 'wynik' (fioletowy pasek u góry + mapa), 'podsumowanie' (cały fioletowy),
+    'mapa' (duża mapa bez paska — trzeba sprawdzić pinezkę, żeby odróżnić wynik od mapy otwartej w rundzie) albo 'runda'."""
     m = img.convert("RGB").resize((160, 90))
     px = m.load()
 
@@ -156,7 +172,7 @@ def rodzaj_ekranu(img: Image.Image) -> str:
     if dol_f > 0.4:
         return "podsumowanie"       # fioletowe tło bez paska: ekrany między grami, menu
     if czy_mapa(img):
-        return "wynik"              # inne tryby gry: ekran wyniku to duża mapa bez fioletowego paska
+        return "mapa"               # dużą część ekranu zajmuje mapa: wynik w innym trybie gry ALBO mapa otwarta w trakcie rundy
     return "runda"
 
 
