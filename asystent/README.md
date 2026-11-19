@@ -32,6 +32,8 @@ Tryb darmowy wymaga Pythona (wersja .exe go nie zawiera, bo model i biblioteki w
 
 **Wszystko w jednym folderze:** rundy i ustawienia są w `dane`, modele w `modele`, biblioteki w `biblioteki` — obok programu. Cały folder możesz przenieść na inny dysk. Przy pierwszym uruchomieniu `uruchom.bat` sam przenosi stare dane i modele z dysku C: (`przenies_dane.bat`).
 
+W teście na stałym zestawie 110 zdjęć model trafił kraj w 67 przypadkach (61%), a w 91 (83%) poprawny kraj był w pierwszej trójce. Na zbliżeniach pojedynczych znaków czy słupków radzi sobie słabo.
+
 ## Koszt
 
 Każda analiza (F8 lub F10) to jedno zapytanie do Claude. Koszt widać na dole okienka.
