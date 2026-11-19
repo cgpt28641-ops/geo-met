@@ -116,52 +116,91 @@ def baza_miast():
 
 
 def _odleglosc_z_paska(rgb, czyt):
-    """Zwykła gra: odległość z dolnego paska pod napisem DISTANCE (np. „498 km”). Zwraca kilometry albo None.
+    """Zwykła gra: odległość z dolnego paska (TIME · DISTANCE · SCORE), np. „498 km”. Zwraca kilometry albo None.
 
-    Cyfry są dużo wyższe niż dopisek „km”, więc najpierw oddzielamy je po wysokości znaków i czytamy same cyfry.
+    W pasku są trzy liczby, a ich położenie zmienia się z długością napisów. Odległość poznajemy po tym, że jako jedyna
+    ma za sobą mały dopisek („km” albo „m”): cyfry są wysokie, dopisek niski. Czas („3:16”) i punkty („4,502”) go nie mają.
     """
     import numpy as np
     from PIL import Image
     try:
         w, h = rgb.size
-        x0, y0 = int(w * 0.405), int(h * 0.932)
-        wyc = rgb.crop((x0, y0, int(w * 0.49), int(h * 0.968)))
-        a = np.asarray(wyc).min(axis=2) > 190           # białe znaki na ciemnym tle
+        wyc = rgb.crop((int(w * 0.30), int(h * 0.934), int(w * 0.56), int(h * 0.968)))     # sam wiersz z wartościami, bez podpisów nad nimi
+        px = np.asarray(wyc).astype(np.int16)
+        a = (px.min(axis=2) > 190)                      # białe znaki (żółte punkty SCORE tu nie wchodzą)
         kolumny = a.any(axis=0)
-        znaki, start = [], None
+        znaki, start = [], None                          # (x0, x1, góra, dół)
         for x, jest in enumerate(list(kolumny) + [False]):
             if jest and start is None:
                 start = x
             elif not jest and start is not None:
                 wiersze = np.nonzero(a[:, start:x].any(axis=1))[0]
-                znaki.append((start, x, int(wiersze[-1] - wiersze[0] + 1)))
+                znaki.append((start, x, int(wiersze[0]), int(wiersze[-1]) + 1))
                 start = None
-        znaki = [z for z in znaki if z[2] >= 5]
+        znaki = [z for z in znaki if 3 <= z[3] - z[2] < 0.8 * wyc.height and z[0] > 0 and z[1] < wyc.width]     # bez jasnej krawędzi paska
         if not znaki:
             return None
-        najw = max(z[2] for z in znaki)
-        duze = [z for z in znaki if z[2] >= 0.8 * najw]
-        # liczba to pierwsza zwarta grupa dużych znaków (dalej, po prawej, bywa już kolumna SCORE)
-        grupa = [duze[0]]
-        for z in duze[1:]:
-            przerwa = z[0] - grupa[-1][1]
-            # większa przerwa to koniec liczby (dalej jest „km”), chyba że stoi w niej przecinek tysięcy („7,686”)
-            przecinek = any(grupa[-1][1] <= m[0] and m[1] <= z[0] and m[2] < 0.5 * najw for m in znaki)
-            if przerwa > najw * 0.3 and not (przecinek and przerwa < najw * 0.9):
+        najw = max(z[3] - z[2] for z in znaki)
+        gora = min(z[2] for z in znaki if z[3] - z[2] >= 0.8 * najw)
+
+        def duzy(z):
+            return z[3] - z[2] >= 0.8 * najw
+
+        def przecinek(z):       # mały znak przy dolnej linii cyfr (przecinek lub kropka tysięcy); dwukropek czasu sięga wyżej
+            return not duzy(z) and z[2] >= gora + 0.6 * najw and z[1] - z[0] <= 0.5 * najw
+
+        # sklejamy znaki w grupy: cyfry stojące blisko siebie, ewentualnie rozdzielone przecinkiem tysięcy
+        grupy, i = [], 0
+        while i < len(znaki):
+            if not duzy(znaki[i]):
+                i += 1
+                continue
+            g = [znaki[i]]
+            j = i + 1
+            while j < len(znaki):
+                z = znaki[j]
+                if duzy(z) and z[0] - g[-1][1] <= 0.35 * najw:
+                    g.append(z)
+                elif przecinek(z) and z[0] - g[-1][1] <= 0.35 * najw and j + 1 < len(znaki) and duzy(znaki[j + 1]) and znaki[j + 1][0] - z[1] <= 0.35 * najw:
+                    g.append(z)
+                else:
+                    break
+                j += 1
+            grupy.append((g, j))
+            i = j
+        wybrana = None
+        for g, j in grupy:      # odległość = grupa cyfr, po której stoi mały dopisek, a za nim długo nic
+            male = []
+            while j < len(znaki) and not duzy(znaki[j]) and znaki[j][0] - (male[-1][1] if male else g[-1][1]) <= 0.9 * najw:
+                male.append(znaki[j])
+                j += 1
+            dalej = znaki[j][0] - male[-1][1] if male and j < len(znaki) else 999
+            if male and dalej > 1.2 * najw and not (len(male) == 1 and not przecinek(male[0]) and male[0][3] - male[0][2] < 0.75 * najw and male[0][2] < gora + 0.5 * najw and male[0][1] - male[0][0] < 0.35 * najw):
+                wybrana = (g, male)
                 break
-            grupa.append(z)
-        male = [z for z in znaki if z[2] < 0.8 * najw and grupa[-1][1] <= z[0] <= grupa[-1][1] + najw * 3]
-        prawa = grupa[-1][1] + (max(1, (male[0][0] - grupa[-1][1]) // 2) if male else 6)     # nie zahaczamy o literę „k”
-        cyfry = Image.new("RGB", (prawa - grupa[0][0] + 24, wyc.height), (30, 20, 70))
-        cyfry.paste(wyc.crop((max(0, grupa[0][0] - 6), 0, prawa, wyc.height)), (9, 0))
+        opis = " ".join(f"{z[0]}-{z[1]}:{z[3] - z[2]}" for z in znaki)
+        if not wybrana:
+            silnik.log(f"dolny pasek (odległość): nie znalazłem liczby z dopiskiem km · znaki {opis}")
+            return None
+        g, male = wybrana
+        prawa = g[-1][1] + max(1, (male[0][0] - g[-1][1]) // 2)       # nie zahaczamy o literę „k”
+        lewa = max(0, g[0][0] - 6)
+        cyfry = Image.new("RGB", (prawa - lewa + 18, wyc.height), (30, 20, 70))
+        cyfry.paste(wyc.crop((lewa, 0, prawa, wyc.height)), (9, 0))
         cyfry = cyfry.resize((cyfry.width * 4, cyfry.height * 4), Image.LANCZOS)
-        tekst = "".join(t for _, t, _ in czyt.readtext(np.asarray(cyfry), allowlist="0123456789"))
-        szer_jedn = (male[-1][1] - male[0][0]) if male else 0
-        metry = bool(male) and szer_jedn < 1.5 * max(z[2] for z in male)     # samo „m” jest wąskie, „km” szerokie
-        silnik.log(f"dolny pasek (odległość): cyfry {tekst!r} · jednostka {'m' if metry else 'km'} (szerokość {szer_jedn})")
+        # przecinek tysięcy („7,686”) dopuszczamy przy czytaniu i potem wyrzucamy; kawałki czytamy od lewej do prawej
+        odczyt = sorted(czyt.readtext(np.asarray(cyfry), allowlist="0123456789,"), key=lambda o: o[0][0][0])
+        tekst = re.sub(r"\D", "", "".join(t for _, t, _ in odczyt))
+        szer_jedn = male[-1][1] - male[0][0]
+        metry = szer_jedn < 1.5 * max(z[3] - z[2] for z in male)      # samo „m” jest wąskie, „km” szerokie
+        silnik.log(f"dolny pasek (odległość): cyfry {tekst!r} · jednostka {'m' if metry else 'km'} · znaki {opis}")
         if not tekst:
             return None
-        return round(int(tekst) / 1000) if metry else int(tekst)
+        wynik = round(int(tekst) / 1000) if metry else int(tekst)
+        if wynik > 20100:      # dalej niż pół obwodu Ziemi się nie da
+            silnik.log(f"dolny pasek (odległość): odczyt {tekst!r} odrzucony jako niewiarygodny")
+            return None
+        return wynik
     except Exception:
         silnik.log("BŁĄD odczytu odległości z dolnego paska", blad=True)
         return None
