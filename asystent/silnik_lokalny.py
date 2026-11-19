@@ -115,14 +115,19 @@ def _osadzenia(obrazy: list) -> list:
         brak = [img for img in obrazy if not (_pamiec_emb.get(id(img)) and _pamiec_emb[id(img)][0] is img)]
         brak = list({id(i): i for i in brak}.values())
         with torch.no_grad():
-            for start in range(0, len(brak), 4):          # po 4 zrzuty (16 obrazów) naraz — mieści się w pamięci karty
-                porcja = brak[start:start + 4]
+            for start in range(0, len(brak), 1):          # po jednym zrzucie (4 obrazy) naraz: większe porcje zapychały pamięć karty (5 z 6 GB) i spowalniały
+                porcja = brak[start:start + 1]
                 wej = proc(images=[f for img in porcja for f in _fragmenty(img)], return_tensors="pt").to(_stan["urz"])
                 o = model.visual_projection(model.vision_model(**wej).pooler_output)
-                o = o / o.norm(dim=-1, keepdim=True)
+                o = (o / o.norm(dim=-1, keepdim=True)).float()
                 for i, img in enumerate(porcja):
                     _pamiec_emb[id(img)] = (img, o[i * 4:i * 4 + 4])
         wynik = [_pamiec_emb[id(img)][1] for img in obrazy]
+        if brak and _stan["urz"] == "cuda":
+            try:
+                torch.cuda.empty_cache()      # oddajemy karcie pamięć roboczą, żeby gra miała miejsce
+            except Exception:
+                pass
         if len(_pamiec_emb) > 90:
             zostaw = {id(img) for img in obrazy}
             for k in [k for k in _pamiec_emb if k not in zostaw][:45]:
