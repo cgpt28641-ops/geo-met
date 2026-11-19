@@ -115,6 +115,7 @@ class Asystent:
         tk.Button(dol, text="🏁 Koniec rundy", command=self.koniec_rundy).pack(side="left", padx=6)
         self.lbl_koszt = tk.Label(dol, fg=KOLOR_SZARY, bg=KOLOR_TLA, font=("Segoe UI", 8))
         self.lbl_koszt.pack(side="right")
+        self.lbl_koszt.bind("<Button-1>", lambda _: self._otworz_pamiec())   # klik otwiera plik z zapisem pamięci karty
         self._odswiez_status()
         self.pisz([("Gotowy. ", "akc"), (f"{self.nazwa_skrotu('skrot_koniec_rundy')} po każdej rundzie = nauka na poprawnym miejscu.\n", ""),
                    (f"{self.nazwa_skrotu('skrot_podpowiedzi')} włącza podpowiedzi (tylko gra pojedyncza / trening).", "szary")])
@@ -179,14 +180,30 @@ class Asystent:
         k = self.silnik.koszt
         self.lbl_koszt.config(text=("tryb darmowy · 0 zł" + (" · " + self.pamiec if self.pamiec else "")) if self.lokalny else f"{k.wywolania} analiz · ~{k.pln:.2f} zł")
 
+    def _otworz_pamiec(self) -> None:
+        try:
+            import os
+            os.startfile(silnik.katalog_aplikacji() / "pamiec_karty.txt")
+        except Exception:
+            pass
+
     def _petla_pamieci(self) -> None:
-        """Co kilka sekund sprawdza zajętość pamięci karty graficznej (pokazywaną na dole okienka)."""
+        """Co 5 sekund sprawdza pamięć karty graficznej: pokazuje ją na dole okienka i dopisuje do pliku pamiec_karty.txt."""
+        plik = silnik.katalog_aplikacji() / "pamiec_karty.txt"
+        try:
+            plik.write_text("godzina;karta_zajete_MB;karta_cala_MB;asystent_MB;ekran;asystent_liczy\n", encoding="utf-8")
+        except Exception:
+            pass
         while True:
             try:
-                nowa = silnik_lokalny.pamiec_karty() if self.lokalny else ""
+                m = silnik_lokalny.pamiec_karty_mb() if self.lokalny else None
+                nowa = (f"karta: {m[0] / 1024:.1f} z {m[1] / 1024:.1f} GB" + (f" (asystent {m[2] / 1024:.1f} GB)" if m[2] else "")) if m else ""
                 if nowa != self.pamiec:
                     self.pamiec = nowa
                     self.kolejka.put(("akcja", self._odswiez_status))
+                if m:
+                    with open(plik, "a", encoding="utf-8") as f:
+                        f.write(f"{time.strftime('%H:%M:%S')};{m[0]};{m[1]};{m[2]};{self.ostatni_ekran or '-'};{'tak' if self.zajety else 'nie'}\n")
             except Exception:
                 pass
             time.sleep(5)

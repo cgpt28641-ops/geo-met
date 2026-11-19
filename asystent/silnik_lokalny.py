@@ -50,23 +50,31 @@ def urzadzenie() -> str:
     return "karta graficzna" if _stan["urz"] == "cuda" else "procesor"
 
 
-def pamiec_karty() -> str:
-    """Zajęta pamięć karty graficznej: cała karta (razem z grą) i ile z tego bierze asystent. Pusty napis, gdy brak karty NVIDIA."""
+def pamiec_karty_mb():
+    """(zajęte na całej karcie, cała pamięć, ile bierze asystent) w MB albo None, gdy brak karty NVIDIA."""
     import subprocess
     try:
         wyn = subprocess.run(["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"],
                              capture_output=True, text=True, timeout=5, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         zajete, cala = [int(x) for x in wyn.stdout.strip().splitlines()[0].split(",")]
     except Exception:
-        return ""
-    opis = f"karta: {zajete / 1024:.1f} z {cala / 1024:.1f} GB"
+        return None
+    nasze = 0
     try:
         torch = _stan.get("torch")
         if torch is not None and _stan.get("urz") == "cuda":
-            opis += f" (asystent {torch.cuda.memory_reserved() / 1024 ** 3:.1f} GB)"
+            nasze = round(torch.cuda.memory_reserved() / 1024 ** 2)
     except Exception:
         pass
-    return opis
+    return zajete, cala, nasze
+
+
+def pamiec_karty() -> str:
+    """Opis zajętej pamięci karty graficznej do pokazania w okienku. Pusty napis, gdy brak karty NVIDIA."""
+    m = pamiec_karty_mb()
+    if not m:
+        return ""
+    return f"karta: {m[0] / 1024:.1f} z {m[1] / 1024:.1f} GB" + (f" (asystent {m[2] / 1024:.1f} GB)" if m[2] else "")
 
 
 def _fragmenty(img) -> list:
