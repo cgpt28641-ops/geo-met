@@ -252,7 +252,73 @@ class Asystent:
             self.root.after(500, lambda: self.pisz([("Część skrótów niedostępna: ", "b"), ("; ".join(bledy), ""), ("\nUżywaj przycisków w okienku.", "szary")]))
 
     def nazwa_skrotu(self, nazwa: str) -> str:
-        return next((n for n, v in SKROTY.items() if v == str(self.cfg.get(nazwa, "")).lower()), str(self.cfg.get(nazwa, "")).upper())
+        return self._opis_skrotu(str(self.cfg.get(nazwa, "")).lower())
+
+    @staticmethod
+    def _opis_skrotu(wartosc: str) -> str:
+        """Nazwa skrótu pokazywana w ustawieniach (np. „F8”, „Mysz: boczny 1”, „Klawisz: f13”)."""
+        return next((n for n, v in SKROTY.items() if v == wartosc), f"Klawisz: {wartosc}")
+
+    @staticmethod
+    def _wartosc_skrotu(opis: str) -> str:
+        if opis in SKROTY:
+            return SKROTY[opis]
+        return opis[9:].strip().lower() if opis.startswith("Klawisz: ") else ""
+
+    def _nagraj_skrot(self, zm, przycisk) -> None:
+        """Czeka na naciśnięcie klawisza albo przycisku myszy i wpisuje go jako skrót."""
+        stan = {"koniec": False, "k": None, "m": None}
+        try:
+            import keyboard
+        except Exception:
+            keyboard = None
+        try:
+            import mouse
+        except Exception:
+            mouse = None
+        if not keyboard and not mouse:
+            messagebox.showwarning("GeoMeta", "Nagrywanie skrótów nie jest dostępne na tym komputerze.")
+            return
+        przycisk.config(text="Naciśnij klawisz lub przycisk myszy…", state="disabled")
+
+        def zakoncz(wartosc):
+            if stan["koniec"]:
+                return
+            stan["koniec"] = True
+
+            def w_oknie():   # wykonywane w głównym wątku okienka
+                for lib, uchwyt in ((keyboard, stan["k"]), (mouse, stan["m"])):
+                    try:
+                        if lib and uchwyt:
+                            lib.unhook(uchwyt)
+                    except Exception:
+                        pass
+                try:
+                    if wartosc:
+                        zm.set(self._opis_skrotu(wartosc))
+                    przycisk.config(text="⏺ Nagraj", state="normal")
+                except tk.TclError:
+                    pass          # okno ustawień zostało już zamknięte
+            self.kolejka.put(("akcja", w_oknie))
+
+        def klawisz(zd):
+            if zd.event_type == "down" and zd.name and zd.name != "unknown":
+                zakoncz(zd.name.lower())
+
+        def mysz(zd):
+            # lewy i prawy przycisk zostają dla gry; przypisać można środkowy i boczne
+            if getattr(zd, "event_type", "") == "down" and getattr(zd, "button", "") in ("x", "x2", "middle"):
+                zakoncz("mysz:" + zd.button)
+        try:
+            if keyboard:
+                stan["k"] = keyboard.hook(klawisz)
+            if mouse:
+                stan["m"] = mouse.hook(mysz)
+        except Exception as e:
+            zakoncz("")
+            messagebox.showwarning("GeoMeta", f"Nie udało się nagrać skrótu: {e}")
+            return
+        self.root.after(10000, lambda: zakoncz(""))   # po 10 s bez naciśnięcia nagrywanie się wyłącza
 
     def _petla_zrzutow(self) -> None:
         while True:
@@ -553,7 +619,7 @@ class Asystent:
         okno = tk.Toplevel(self.root)
         okno.title("Ustawienia — GeoMeta Asystent")
         okno.attributes("-topmost", True)
-        okno.geometry("560x800")
+        okno.geometry("560x860")
         ramka = ttk.Frame(okno, padding=14)
         ramka.pack(fill="both", expand=True)
 
@@ -581,7 +647,13 @@ class Asystent:
             zm = tk.StringVar(value=self.nazwa_skrotu(nazwa))
             ttk.Combobox(wiersz, textvariable=zm, values=list(SKROTY), state="readonly", width=20).grid(row=1, column=kol, sticky="we", padx=(0, 8))
             skroty[nazwa] = zm
+            przycisk = ttk.Button(wiersz, text="⏺ Nagraj")
+            przycisk.config(command=lambda z=zm, b=przycisk: self._nagraj_skrot(z, b))
+            przycisk.grid(row=2, column=kol, sticky="we", padx=(0, 8), pady=(2, 0))
             wiersz.columnconfigure(kol, weight=1)
+        ttk.Label(ramka, text="„Nagraj”: kliknij, a potem naciśnij klawisz albo przycisk myszy, który chcesz przypisać.\n"
+                              "Jeśli przycisk myszy nie reaguje, przypisz mu w programie myszki klawisz (np. F13) i nagraj ponownie.",
+                  foreground="#666").pack(anchor="w", pady=(4, 0))
         ttk.Label(ramka, text="Zrzut ekranu co ile sekund (krócej = więcej widoków z rundy):").pack(anchor="w", pady=(10, 0))
         odstep = tk.IntVar(value=int(self.cfg.get("co_ile_s", 2)))
         tk.Scale(ramka, from_=1, to=10, orient="horizontal", variable=odstep, showvalue=True).pack(fill="x")
@@ -598,12 +670,12 @@ class Asystent:
         def zapisz():
             self.cfg.update(tryb=tryby[tryb.get()], api_key=klucz.get().strip(), model=nazwy[model.get()], sync_url=url.get().strip().rstrip("/"),
                             sync_token=token.get().strip(), co_ile_s=int(odstep.get()), kompakt=bool(kompakt.get()), auto_kraj=bool(auto_kraj.get()))
-            wybrane = [SKROTY.get(zm.get(), "") for zm in skroty.values()]
+            wybrane = [self._wartosc_skrotu(zm.get()) for zm in skroty.values()]
             if len({w for w in wybrane if w}) < len([w for w in wybrane if w]):
                 messagebox.showwarning("GeoMeta", "Każda akcja musi mieć inny skrót.")
                 return
             for nazwa, zm in skroty.items():
-                self.cfg[nazwa] = SKROTY.get(zm.get(), self.cfg.get(nazwa, ""))
+                self.cfg[nazwa] = self._wartosc_skrotu(zm.get())
             try:
                 self.cfg["monitor"] = max(1, int(monitor.get()))
             except ValueError:
