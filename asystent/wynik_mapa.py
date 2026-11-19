@@ -139,6 +139,20 @@ def odczytaj(img, typy_modelu: list[str] | None = None) -> dict | None:
         elif pole[0][1] > h * 0.80 and pole[0][0] < w * 0.80:      # prawy dolny róg to podziałka mapy, nie wynik
             km_dol.append((pole[0][0], wartosc))
     odleglosc = min(km)[1] if km else (min(km_dol)[1] if km_dol else None)
+    if odleglosc is None and gora < 0.1:
+        # Zwykła gra: odległość stoi w dolnym pasku, na lewo od środka (np. „954 km”), małą czcionką — czytamy ten kawałek w powiększeniu.
+        try:
+            from PIL import Image
+            wyc = img.convert("RGB").crop((int(w * 0.40), int(h * 0.915), int(w * 0.475), int(h * 0.965)))
+            wyc = wyc.resize((wyc.width * 3, wyc.height * 3), Image.LANCZOS)
+            tekst = " ".join(t for _, t, _ in silnik_lokalny.czytnik().readtext(np.asarray(wyc), allowlist="0123456789,. km"))
+            silnik.log(f"dolny pasek (odległość): {tekst!r}")
+            m = re.search(r"(\d[\d ,.]*)\s*(km|k|m)?", tekst.lower())
+            if m and re.sub(r"\D", "", m.group(1)):
+                liczba = int(re.sub(r"\D", "", m.group(1)))
+                odleglosc = round(liczba / 1000) if m.group(2) == "m" else liczba
+        except Exception:
+            silnik.log("BŁĄD odczytu odległości z dolnego paska", blad=True)
 
     pin = pinezka(img)
     if pin and not (h * gora < pin[1] < h * 0.97 and w * 0.02 < pin[0] < w * 0.98):

@@ -51,6 +51,7 @@ class Asystent:
         self.odkryte = False
         self.zajety = False
         self.ostatni_ekran = "runda"
+        self.zrzuty_wyniku: list = []  # zrzuty ekranu wyniku złapane przez pętlę (ostatni element None = komplet)
         self.runda_zamknieta = False   # po wyniku/lekcji: kolejny widok z ulicy zaczyna nową rundę
         self.okno_rundy = None
 
@@ -391,10 +392,12 @@ class Asystent:
     def _rozpoznaj_ekran(self, zrzut) -> str:
         """'runda', 'wynik', 'podsumowanie' albo 'mapa' (mapa otwarta w trakcie rundy — taki zrzut pomijamy)."""
         ekran = silnik.rodzaj_ekranu(zrzut)
-        if ekran == "mapa":   # duża mapa bez paska wyniku: wynikiem jest tylko wtedy, gdy stoi na niej pinezka poprawnego miejsca
+        if ekran in ("mapa", "runda"):
+            # Ekran wyniku w zwykłej grze to mapa na cały ekran z pinezką poprawnego miejsca (bez fioletowego paska).
+            # Pinezka bywa w dowolnym miejscu, także przy górnej krawędzi; mapa bywa zielona, beżowa albo szara.
             pin = wynik_mapa.pinezka(zrzut)
             w, h = zrzut.size
-            if pin and h * 0.22 < pin[1] < h * 0.97 and w * 0.02 < pin[0] < w * 0.98:
+            if pin and h * 0.05 < pin[1] < h * 0.97 and w * 0.02 < pin[0] < w * 0.98 and (ekran == "mapa" or silnik.kolory_mapy_szerokie(zrzut) >= 0.4):
                 return "wynik"
         return ekran
 
@@ -409,7 +412,7 @@ class Asystent:
                         silnik.log(f"ekran: {self.ostatni_ekran} → {ekran} · zrzut {zrzut.size[0]}x{zrzut.size[1]} · widoków {len(self.widoki)} · pojedynek {self._pojedynek(zrzut)}")
                     elif time.time() - ostatni_log > 30:   # co pół minuty znak życia
                         ostatni_log = time.time()
-                        silnik.log(f"pętla zrzutów działa · ekran {ekran} · widoków {len(self.widoki)}")
+                        silnik.log(f"pętla zrzutów działa · ekran {ekran} · widoków {len(self.widoki)} · {self.pamiec or 'karta: brak odczytu'}")
                     if ekran == "runda":
                         z_rzedu += 1
                         if self.runda_zamknieta and z_rzedu >= 2:
@@ -428,8 +431,17 @@ class Asystent:
                         if self.lokalny and self.cfg.get("auto_koniec", True) and len(self.widoki) >= 2:
                             self.runda_zamknieta = True
                             silnik.log("wykryto ekran wyniku → uruchamiam lekcję")
+                            # Zrzuty wyniku łapie ta pętla (od razu i po 3 s, gdy mapa skończy się animować), a lekcja liczy się obok.
+                            # Dzięki temu szybkie przejście do następnej rundy nie gubi wyniku.
+                            self.zrzuty_wyniku = [zrzut]
                             self.kolejka.put(("akcja", lambda: self.koniec_rundy_lokalnie(auto=True)))
-                            time.sleep(1)     # dajemy lekcji wystartować, zanim pętla zrobi następny zrzut
+                            time.sleep(3)
+                            pozniej = self._zrzut()
+                            if self._rozpoznaj_ekran(pozniej) == "wynik":
+                                self.zrzuty_wyniku.append(pozniej)
+                            else:
+                                silnik.log("po 3 s ekranu wyniku już nie było — użyję pierwszego zrzutu")
+                            self.zrzuty_wyniku.append(None)     # znak dla lekcji: więcej zrzutów nie będzie
                         else:
                             self.runda_zamknieta = True
                             silnik.log(f"ekran wyniku, ale lekcja nie ruszyła: tryb lokalny {self.lokalny}, auto_koniec {self.cfg.get('auto_koniec', True)}, widoków {len(self.widoki)}")
@@ -602,6 +614,10 @@ class Asystent:
         auto=True (program sam wykrył ekran wyniku): nic nie trzeba klikać — gdy mapy nie da się pewnie odczytać, zostaje tylko krótka informacja.
         auto=False (F10 / przycisk): gdy wynik jest niepewny, pojawia się pytanie o kraj.
         """
+        if self.zajety and auto:
+            silnik.log("lekcja nie ruszyła: asystent był zajęty inną analizą — spróbuję za chwilę")
+            self.root.after(1500, lambda: self.koniec_rundy_lokalnie(auto=True) if self.zrzuty_wyniku else None)
+            return
         if self.zajety or (self.okno_rundy is not None and self.okno_rundy.winfo_exists()):
             return
         widoki = silnik.wybierz_rozne(list(self.widoki), 6)
@@ -624,14 +640,14 @@ class Asystent:
             # widoki z rundy liczymy od razu — w tym czasie mapa wyniku kończy się animować
             typy = silnik_lokalny.typuj(widoki, 3) if widoki else []
             if auto:
-                time.sleep(max(0.0, 3 - (time.time() - start)))    # pinezka i odległość pojawiają się po ok. 3 s
-                wynik = self._zrzut()
-                if self._rozpoznaj_ekran(wynik) != "wynik":
-                    silnik.log("ekran wyniku zniknął — to nie był koniec rundy")
-                    self.runda_zamknieta = False
-                    self.ostatni_ekran = "runda"
-                    self.kolejka.put(("pisz", [("", "")]))
+                while time.time() - start < 6 and (not self.zrzuty_wyniku or self.zrzuty_wyniku[-1] is not None):
+                    time.sleep(0.1)      # czekamy, aż pętla złapie zrzut po 3 s
+                zlapane = [z for z in self.zrzuty_wyniku if z is not None]
+                if not zlapane:
+                    silnik.log("brak zrzutu wyniku — lekcja przerwana")
                     return
+                wynik = zlapane[-1]      # najpóźniejszy: mapa już stoi, widać pinezkę i odległość
+                silnik.log(f"zrzutów wyniku: {len(zlapane)}, do odczytu biorę {'późniejszy' if len(zlapane) > 1 else 'pierwszy'}")
             try:
                 odczyt = wynik_mapa.odczytaj(wynik, [t["kod"] for t in typy]) if self.cfg.get("auto_kraj", True) and silnik_lokalny.napisy_dostepne() else None
             except Exception:

@@ -135,6 +135,18 @@ def kolory_mapy(img: Image.Image) -> float:
     return float((woda | lad).mean())
 
 
+def kolory_mapy_szerokie(img: Image.Image) -> float:
+    """Jak kolory_mapy, ale liczy też jasne, beżowe i szarawe tło mapy (suche tereny, mapa mocno przybliżona na miasto).
+    Takie kolory mają też białe ściany czy śnieg, więc tej miary używamy tylko razem z pinezką wyniku."""
+    import numpy as np
+    a = np.asarray(img.convert("RGB").resize((160, 90))).astype(np.int16)[8:86, 6:154]
+    r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    woda = (r > 125) & (r < 170) & (g > 168) & (g < 205) & (b > 232)
+    lad = (r > 135) & (r < 215) & (g > 200) & (g < 245) & (b > 150) & (b < 225) & (g - r > 10)
+    jasne = (r > 222) & (g > 222) & (b > 200) & (abs(r - g) < 14) & (r - b < 40) & (r - b > -12)
+    return float((woda | lad | jasne).mean())
+
+
 def czysty_widok(img: Image.Image) -> bool:
     """Czy to zwykły widok z ulicy, bez dużej mapy na ekranie (tylko takie zrzuty trafiają do widoków z rundy)."""
     try:

@@ -252,6 +252,13 @@ def czytaj_napisy(obrazy: list, kandydaci: list | None = None) -> list[dict]:
             if len(_pamiec_ocr) > 60:
                 _pamiec_ocr.clear()
             _pamiec_ocr[id(img0)] = (img0, odczyty)
+        # Zrzut, na którym jest dużo nazw miejscowości, to mapa (otwarta do strzału albo ekran wyniku), a nie widok z ulicy:
+        # jego napisów nie bierzemy i cały zrzut pomijamy przy typowaniu kraju.
+        ile_miast = len({_uprosc(t.strip().lower()).strip(" .,-") for t, pw in odczyty if pw >= 0.6} & _stan["miasta"].keys() - NIE_MIASTA)
+        if ile_miast >= 5:
+            _stan.setdefault("ramki_map", {})[id(img0)] = img0
+            silnik.log(f"zrzut pominięty: wygląda na mapę ({ile_miast} nazw miejscowości)")
+            continue
         for tekst, pewnosc in odczyty:
             t = tekst.strip().lower()
             if len(t) < 3 or t in widziane or "google" in t:
@@ -399,7 +406,7 @@ def typuj(obrazy: list, ile: int = 5, uzyj_napisow: bool = True) -> list[dict]:
     t_start = _t.time()
     _zaladuj()
     torch, model, proc = _stan["torch"], _stan["model"], _stan["proc"]
-    suma = None
+    pojedyncze = []
     with torch.no_grad():
         for img in obrazy:
             # cały widok + trzy fragmenty (lewy, środek, prawy) — w teście dało to wyraźnie lepszą trafność
@@ -408,8 +415,8 @@ def typuj(obrazy: list, ile: int = 5, uzyj_napisow: bool = True) -> list[dict]:
             o = o / o.norm(dim=-1, keepdim=True)
             pr = (100 * o @ _stan["tekst"].T).softmax(-1)
             p = (pr[0] * 2 + pr[1:].sum(0)) / 5   # cały widok liczy się podwójnie
-            suma = p if suma is None else suma + p
-    p = (suma / len(obrazy)).cpu()
+            pojedyncze.append(p)
+    p = (sum(pojedyncze) / len(pojedyncze)).cpu()
     lista = kraje()
     try:  # uczenie na rundach gracza — tylko gdy sprawdzone, że pomaga
         if ocena_uczenia()["aktywne"]:
@@ -421,6 +428,12 @@ def typuj(obrazy: list, ile: int = 5, uzyj_napisow: bool = True) -> list[dict]:
     t_model = time.time()
     napisy = czytaj_napisy(obrazy[-3:], [lista[i]["id"] for i in p.topk(6).indices.tolist()]) if uzyj_napisow else []
     t_napisy = time.time()
+    mapy = _stan.get("ramki_map", {})
+    dobre = [q for img, q in zip(obrazy, pojedyncze) if mapy.get(id(img)) is not img]
+    if dobre and len(dobre) < len(pojedyncze):     # część zrzutów okazała się mapami — typ kraju liczymy bez nich
+        p = (sum(dobre) / len(dobre)).cpu()
+    if len(mapy) > 80:
+        mapy.clear()
     if napisy:
         for n in napisy:  # reguła z napisu podbija pasujące kraje (miasto najmocniej)
             for i, k in enumerate(lista):
@@ -454,7 +467,7 @@ def typuj(obrazy: list, ile: int = 5, uzyj_napisow: bool = True) -> list[dict]:
     _stan["ostatnie_dodatki"] = dodatki
     top = p.topk(ile)
     wynik = [{"kod": lista[i]["id"], "kraj": lista[i]["pl"], "pewnosc": round(float(v) * 100)} for v, i in zip(top.values, top.indices)]
-    silnik.log(f"typuj: {len(obrazy)} widoków · {_stan['urz']} · model {t_model - t_start:.1f} s, napisy {t_napisy - t_model:.1f} s, reszta {time.time() - t_napisy:.1f} s · " + ", ".join(f"{t['kod']} {t['pewnosc']}%" for t in wynik)
+    silnik.log(f"typuj: {len(obrazy)} widoków (w tym map: {len(pojedyncze) - len(dobre)}) · {_stan['urz']} · {pamiec_karty() or 'karta: brak odczytu'} · model {t_model - t_start:.1f} s, napisy {t_napisy - t_model:.1f} s, reszta {time.time() - t_napisy:.1f} s · " + ", ".join(f"{t['kod']} {t['pewnosc']}%" for t in wynik)
                + f" · napisy {[(n['napis'], n['powod'], n['kody'][:4]) for n in napisy]} · dodatki {dodatki}")
     return wynik
 
