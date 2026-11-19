@@ -96,7 +96,7 @@ class Asystent:
     def _odswiez_status(self) -> None:
         on = self.cfg.get("podpowiedzi")
         self.lbl_tryb.config(text=("💡 podpowiedzi WŁ." if on else "🎓 tylko nauka"), fg=(KOLOR_AKCENT if on else KOLOR_SZARY))
-        self.btn_analiza.config(state=("normal" if on and not self.lokalny else "disabled"))
+        self.btn_analiza.config(state=("normal" if on else "disabled"))
         k = self.silnik.koszt
         self.lbl_koszt.config(text="tryb darmowy · 0 zł" if self.lokalny else f"{k.wywolania} analiz · ~{k.pln:.2f} zł")
 
@@ -173,9 +173,7 @@ class Asystent:
             self.pisz([("Podpowiedzi są wyłączone. ", "b"), (f"Włącz je klawiszem {self.cfg['skrot_podpowiedzi'].upper()}.", "")])
             return
         if self.lokalny:
-            self.pisz([("Podpowiedzi na żywo działają tylko w trybie Claude. ", "b"),
-                       ("Darmowy model nie rozpoznaje, czy trwa mecz rankingowy, więc w tym trybie jest tylko nauka po rundzie (F10). Tryb zmienisz w ⚙.", "")])
-            return
+            return self.analiza_lokalna()
         # drugie naciśnięcie po analizie = odkryj kraje
         if self.ostatnia_analiza and not self.odkryte and time.time() - self.ostatnia_analiza.get("_czas", 0) < 120:
             self.odkryte = True
@@ -189,6 +187,40 @@ class Asystent:
             wynik["_czas"] = time.time()
             self.ostatnia_analiza, self.odkryte = wynik, False
             self.kolejka.put(("akcja", lambda: self._pokaz_analize(wynik)))
+        self._w_tle(praca)
+
+    def analiza_lokalna(self) -> None:
+        """Darmowa podpowiedź: model lokalny + reguły GeoMeta. W pojedynkach (Duels) zablokowana."""
+        if self.zajety:
+            return
+        try:
+            zrzut = silnik.zrob_zrzut(self.cfg.get("monitor", 1))
+        except Exception as e:
+            self.pisz([("Błąd zrzutu ekranu: ", "b"), (str(e), "")])
+            return
+        if silnik.czy_pojedynek(zrzut) or any(silnik.czy_pojedynek(w) for w in list(self.widoki)[-2:]):
+            self.pisz([("Pojedynek wykryty 🔒", "akc"), ("\nPodpowiedzi są tu zablokowane. Po rundzie dostaniesz lekcję.", "")])
+            return
+        if silnik.rodzaj_ekranu(zrzut) != "runda":
+            self.pisz([("To nie wygląda na widok z rundy.", "szary")])
+            return
+        self.pisz([("Analizuję widok (model lokalny)…", "szary")])
+        widoki = [*list(self.widoki)[-2:], zrzut]
+
+        def praca():
+            typy = silnik_lokalny.typuj(widoki, 3)
+            widziane = silnik_lokalny.sprawdz_reguly(widoki)
+            czesci = []
+            if widziane:
+                czesci += [("Zauważone na zrzutach:\n", "b")] + [(f" • {w['widac']} ({w['pewnosc']}%) → {w['regula']}\n", "") for w in widziane]
+            czesci.append(("\nNajbardziej prawdopodobne:\n", "b"))
+            for t in typy:
+                czesci.append((f" {t['kraj']} — {t['pewnosc']}%\n", "akc"))
+                czesci += [(f"   • sprawdź: {r}\n", "") for r in silnik_lokalny.pasujace_reguly(widoki, t["kod"], 2)]
+            regiony = silnik_lokalny.typuj_region(widoki, typy[0]["kod"], 2) if typy else []
+            if regiony:
+                czesci.append(("\nRegion (orientacyjnie): " + ", ".join(f"{r['region']} {r['pewnosc']}%" for r in regiony), "szary"))
+            self.kolejka.put(("pisz", czesci))
         self._w_tle(praca)
 
     def _pokaz_analize(self, w: dict) -> None:
@@ -337,7 +369,7 @@ class Asystent:
             return zm
 
         ttk.Label(ramka, text="Tryb:").pack(anchor="w", pady=(0, 2))
-        tryby = {"Darmowy — model na tym komputerze (nauka po rundzie)": "lokalny", "Claude — płatny, dokładniejszy, z podpowiedziami": "claude"}
+        tryby = {"Darmowy — model na tym komputerze": "lokalny", "Claude — płatny, dokładniejszy": "claude"}
         tryb = tk.StringVar(value=next(n for n, v in tryby.items() if v == self.cfg.get("tryb", "lokalny")))
         ttk.Combobox(ramka, textvariable=tryb, values=list(tryby), state="readonly").pack(fill="x")
         klucz = pole("Klucz API Anthropic (tylko tryb Claude):", self.cfg.get("api_key", ""), True)

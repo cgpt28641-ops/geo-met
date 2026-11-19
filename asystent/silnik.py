@@ -104,6 +104,22 @@ def rodzaj_ekranu(img: Image.Image) -> str:
     return "runda"
 
 
+def czy_pojedynek(img: Image.Image) -> bool:
+    """Wykrywa ekran pojedynku (Duels): dwa jasnozielone paski życia u góry, po lewej i po prawej."""
+    m = img.convert("RGB").resize((320, 180))
+    px = m.load()
+
+    def zielony(r, g, b):
+        return g > 150 and r < 175 and b < 120 and g > r + 35 and g > b + 60
+
+    def pasek(x0, x1):
+        najlepszy = 0.0
+        for y in range(4, 20):  # paski życia leżą w górnych ~10% ekranu
+            najlepszy = max(najlepszy, sum(zielony(*px[x, y]) for x in range(x0, x1)) / (x1 - x0))
+        return najlepszy
+    return pasek(14, 76) > 0.55 and pasek(244, 306) > 0.55
+
+
 def obraz_do_base64(img: Image.Image, max_bok: int = 1568, jakosc: int = 82) -> str:
     """Zmniejsza i kompresuje zrzut (mniej tokenów = taniej), zwraca base64 JPEG."""
     img = img.convert("RGB")
