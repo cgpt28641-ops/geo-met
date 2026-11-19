@@ -413,15 +413,10 @@ class Asystent:
                         self.runda_zamknieta = True
                     elif ekran == "wynik" and self.ostatni_ekran != "wynik" and not self.runda_zamknieta:
                         if self.lokalny and self.cfg.get("auto_koniec", True) and len(self.widoki) >= 2:
-                            time.sleep(3)     # mapa wyniku najpierw się animuje; pinezka i odległość pojawiają się po chwili
-                            pozniej = self._zrzut()
-                            if self._rozpoznaj_ekran(pozniej) == "wynik":
-                                self.runda_zamknieta = True
-                                silnik.log("wykryto ekran wyniku → uruchamiam lekcję (zrzut po 3 s)")
-                                self.kolejka.put(("akcja", lambda z=pozniej: self.koniec_rundy_lokalnie(z)))
-                            else:
-                                ekran = self.ostatni_ekran
-                                silnik.log("ekran wyniku zniknął po 3 s — to nie był koniec rundy")
+                            self.runda_zamknieta = True
+                            silnik.log("wykryto ekran wyniku → uruchamiam lekcję")
+                            self.kolejka.put(("akcja", lambda: self.koniec_rundy_lokalnie(auto=True)))
+                            time.sleep(1)     # dajemy lekcji wystartować, zanim pętla zrobi następny zrzut
                         else:
                             self.runda_zamknieta = True
                             silnik.log(f"ekran wyniku, ale lekcja nie ruszyła: tryb lokalny {self.lokalny}, auto_koniec {self.cfg.get('auto_koniec', True)}, widoków {len(self.widoki)}")
@@ -588,35 +583,59 @@ class Asystent:
             self.kolejka.put(("pisz", czesci))
         self._w_tle(praca)
 
-    def koniec_rundy_lokalnie(self, wynik=None) -> None:
-        """Tryb darmowy: poprawny kraj odczytywany z mapy wyniku; gdy wynik jest niepewny — pytanie do gracza."""
+    def koniec_rundy_lokalnie(self, wynik=None, auto: bool = False) -> None:
+        """Tryb darmowy: poprawny kraj odczytywany z mapy wyniku.
+
+        auto=True (program sam wykrył ekran wyniku): nic nie trzeba klikać — gdy mapy nie da się pewnie odczytać, zostaje tylko krótka informacja.
+        auto=False (F10 / przycisk): gdy wynik jest niepewny, pojawia się pytanie o kraj.
+        """
         if self.zajety or (self.okno_rundy is not None and self.okno_rundy.winfo_exists()):
             return
         widoki = silnik.wybierz_rozne(list(self.widoki), 6)
-        silnik.log(f"koniec rundy (lokalnie): widoków zapamiętanych {len(self.widoki)}, do analizy {len(widoki)}, zrzut wyniku {'z pętli' if wynik is not None else 'robię teraz'}")
-        if wynik is None:
+        silnik.log(f"koniec rundy (lokalnie, {'sam' if auto else 'F10'}): widoków zapamiętanych {len(self.widoki)}, do analizy {len(widoki)}")
+        start = time.time()
+        if not auto:
             try:
                 wynik = self._zrzut()
             except Exception as e:
                 self.pisz([("Błąd zrzutu ekranu: ", "b"), (str(e), "")])
                 return
-        if not (self.cfg.get("auto_kraj", True) and silnik_lokalny.napisy_dostepne() and silnik.rodzaj_ekranu(wynik) in ("wynik", "mapa")):
-            silnik.log(f"koniec rundy: pytam o kraj ręcznie · auto_kraj {self.cfg.get('auto_kraj', True)} · czytanie napisów {silnik_lokalny.napisy_dostepne()} · ekran {silnik.rodzaj_ekranu(wynik)}")
-            return self._pytaj_o_kraj(widoki, wynik)
+            if not (self.cfg.get("auto_kraj", True) and silnik_lokalny.napisy_dostepne() and silnik.rodzaj_ekranu(wynik) in ("wynik", "mapa")):
+                silnik.log(f"koniec rundy: pytam o kraj ręcznie · auto_kraj {self.cfg.get('auto_kraj', True)} · czytanie napisów {silnik_lokalny.napisy_dostepne()} · ekran {silnik.rodzaj_ekranu(wynik)}")
+                return self._pytaj_o_kraj(widoki, wynik)
         self.ustaw_widok(True)
-        self.pisz([("Czytam mapę wyniku…", "szary"), ("\nPierwsze uruchomienie pobiera modele — to może potrwać kilka minut.", "szary")])
+        self.pisz([("Czytam mapę wyniku…", "szary")])
 
         def praca():
+            nonlocal wynik
+            # widoki z rundy liczymy od razu — w tym czasie mapa wyniku kończy się animować
             typy = silnik_lokalny.typuj(widoki, 3) if widoki else []
+            if auto:
+                time.sleep(max(0.0, 3 - (time.time() - start)))    # pinezka i odległość pojawiają się po ok. 3 s
+                wynik = self._zrzut()
+                if self._rozpoznaj_ekran(wynik) != "wynik":
+                    silnik.log("ekran wyniku zniknął — to nie był koniec rundy")
+                    self.runda_zamknieta = False
+                    self.ostatni_ekran = "runda"
+                    self.kolejka.put(("pisz", [("", "")]))
+                    return
             try:
-                odczyt = wynik_mapa.odczytaj(wynik, [t["kod"] for t in typy])
+                odczyt = wynik_mapa.odczytaj(wynik, [t["kod"] for t in typy]) if self.cfg.get("auto_kraj", True) and silnik_lokalny.napisy_dostepne() else None
             except Exception:
                 silnik.log("BŁĄD odczytu mapy wyniku", blad=True)
                 odczyt = None
             silnik.log(f"typy modelu: {typy} · odczyt mapy: {odczyt}")
             if odczyt and odczyt.get("pewny"):
                 self._zrob_lekcje(widoki, wynik, odczyt["kod"], None, odczyt, typy)
-            else:  # niepewne — okienko z wpisanym krajem do potwierdzenia
+            elif auto:   # bez klikania: sama informacja; F10 pozwala wpisać kraj ręcznie
+                czesci = [("Nie udało się pewnie odczytać kraju z mapy wyniku", "b"), (f" ({odczyt['powod']})" if odczyt and odczyt.get("powod") else "", "szary"), (".\n", "")]
+                if odczyt and odczyt.get("odleglosc_km") is not None:
+                    czesci.append((f"Twoja odległość: {odczyt['odleglosc_km']} km\n", ""))
+                if typy:
+                    czesci.append(("Model typował: " + ", ".join(f"{t['kraj']} {t['pewnosc']}%" for t in typy) + "\n", ""))
+                czesci.append((f"Naciśnij {self.nazwa_skrotu('skrot_koniec_rundy')} na ekranie wyniku, żeby wpisać kraj i dostać lekcję.", "szary"))
+                self.kolejka.put(("pisz", czesci))
+            else:  # F10: niepewne — okienko z wpisanym krajem do potwierdzenia
                 self.kolejka.put(("akcja", lambda: self._pytaj_o_kraj(widoki, wynik, odczyt, typy)))
         self._w_tle(praca)
 

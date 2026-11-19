@@ -165,7 +165,7 @@ def rodzaj_ekranu(img: Image.Image) -> str:
     gora = sum(fiolet(*px[x, y]) for y in range(0, 18) for x in range(160)) / (18 * 160)
     dol_f = sum(fiolet(*px[x, y]) for y in range(23, 90) for x in range(160)) / (67 * 160)
     dol_m = sum(mapa(*px[x, y]) for y in range(23, 90) for x in range(160)) / (67 * 160)
-    if gora > 0.6 and dol_m > 0.5:
+    if gora > 0.6 and (dol_m > 0.5 or kolory_mapy(img) >= 0.35):
         return "wynik"
     if gora > 0.6 and dol_f > 0.4:
         return "podsumowanie"
@@ -177,19 +177,22 @@ def rodzaj_ekranu(img: Image.Image) -> str:
 
 
 def czy_pojedynek(img: Image.Image, jeden_pasek: bool = False) -> bool:
-    """Wykrywa ekran pojedynku (Duels): dwa jasnozielone paski życia u góry, po lewej i po prawej."""
+    """Wykrywa ekran pojedynku (Duels): dwa paski życia u góry, po lewej i po prawej (także gdy życia jest mało)."""
     m = img.convert("RGB").resize((320, 180))
     px = m.load()
 
     def zielony(r, g, b):
-        return g > 150 and r < 175 and b < 120 and g > r + 35 and g > b + 60
+        # pasek życia: wypełnienie zielone, żółte lub pomarańczowe (mało życia) albo jego granatowa, pusta część
+        kolor = max(r, g, b) > 170 and b < 130 and max(r, g, b) - b > 70
+        pusty = r < 75 and g < 70 and 50 < b < 130 and b > r + 15
+        return kolor or pusty
 
     def pasek(x0, x1):
         najlepszy = 0.0
         for y in range(4, 20):  # paski życia leżą w górnych ~10% ekranu
             najlepszy = max(najlepszy, sum(zielony(*px[x, y]) for x in range(x0, x1)) / (x1 - x0))
         return najlepszy
-    lewy, prawy = pasek(14, 76) > 0.55, pasek(244, 306) > 0.55
+    lewy, prawy = pasek(14, 76) > 0.8, pasek(244, 306) > 0.8
     # jeden_pasek: gdy część górnego paska jest zasłonięta (np. zamalowanym okienkiem asystenta), wystarcza jeden pasek życia
     return (lewy or prawy) if jeden_pasek else (lewy and prawy)
 
