@@ -217,9 +217,10 @@ def _odczytaj(img, typy_modelu: list[str] | None = None) -> dict | None:
     import numpy as np
     typy_modelu = typy_modelu or []
     miasta = baza_miast()
-    nazwy_krajow = {silnik_lokalny._uprosc(k["pl"]): k["id"] for k in silnik_lokalny.kraje()}
+    nazwy_krajow = {silnik_lokalny._uprosc(k[j]): k["id"] for k in silnik_lokalny.kraje() for j in ("en", "pl") if k.get(j)}     # mapa bywa po polsku albo po angielsku
     w, h = img.size
-    pojedynek = silnik.rodzaj_ekranu(img) == "wynik"      # fioletowy pasek u góry; w zwykłej grze mapa jest na cały ekran
+    # układ pojedynku: fioletowy pasek u góry (czasem nierozpoznany przez kolorowe paski życia — wtedy poznajemy go po samych paskach)
+    pojedynek = silnik.rodzaj_ekranu(img) == "wynik" or silnik.czy_pojedynek(img)
     gora = 0.22 if pojedynek else 0.06
     pin = pinezka(img)
     if pin and not (h * gora < pin[1] < h * 0.97 and w * 0.02 < pin[0] < w * 0.98):
@@ -240,7 +241,7 @@ def _odczytaj(img, typy_modelu: list[str] | None = None) -> dict | None:
                + " | ".join(f"{t} [{int(pole[0][0])},{int(pole[0][1])}]" for pole, t, pw in odczyty[:60]))
 
     # odległość gracza: pierwszy od lewej napis „… km” w górnej części ekranu (pojedynek) albo w dolnym panelu (zwykła gra)
-    km, km_dol = [], []
+    km = []
     for pole, tekst, pw in odczyty:
         m = re.search(r"(\d[\d  .,]*)\s*km\b", tekst.lower())
         if not m or not re.sub(r"\D", "", m.group(1)):
@@ -248,10 +249,27 @@ def _odczytaj(img, typy_modelu: list[str] | None = None) -> dict | None:
         wartosc = int(re.sub(r"\D", "", m.group(1)))
         if pole[0][1] < h * 0.35:
             km.append((pole[0][0], wartosc))
-        elif pole[0][1] > h * 0.80 and pole[0][0] < w * 0.80:      # prawy dolny róg to podziałka mapy, nie wynik
-            km_dol.append((pole[0][0], wartosc))
-    odleglosc = min(km)[1] if km else (min(km_dol)[1] if km_dol else None)
-    if not pojedynek:
+    if pojedynek:
+        # Pojedynek: odległość gracza jest w lewym (zielonym) polu pod wynikiem rundy; prawe pole to przeciwnik — jego nie bierzemy.
+        odleglosc = None
+        try:
+            from PIL import Image
+            wyc = rgb.crop((int(w * 0.428), int(h * 0.196), int(w * 0.497), int(h * 0.246)))
+            wyc = wyc.resize((wyc.width * 3, wyc.height * 3), Image.LANCZOS)
+            tekst = " ".join(t for _, t, _ in sorted(czyt.readtext(np.asarray(wyc), allowlist="0123456789,. km"), key=lambda o: o[0][0][0]))
+            m = re.search(r"(\d[\d ,.]*?)\s*(km|k|m)\b", tekst.lower())
+            silnik.log(f"pole odległości gracza (pojedynek): {tekst!r}")
+            if m and re.sub(r"\D", "", m.group(1)):
+                liczba = int(re.sub(r"\D", "", m.group(1)))
+                odleglosc = round(liczba / 1000) if m.group(2) == "m" else liczba
+        except Exception:
+            silnik.log("BŁĄD odczytu odległości (pojedynek)", blad=True)
+        if odleglosc is None:
+            lewe = [k for k in km if k[0] < w * 0.5 - 20]
+            odleglosc = min(lewe)[1] if lewe else None
+        if odleglosc is not None and odleglosc > 20100:
+            odleglosc = None
+    else:
         odleglosc = _odleglosc_z_paska(rgb, czyt)
 
     kotwice = []  # (x, y, lon, lat, czy_miasto, nr napisu) — jeden napis może mieć kilka możliwych miejsc (miasta o tej samej nazwie)
@@ -275,47 +293,62 @@ def _odczytaj(img, typy_modelu: list[str] | None = None) -> dict | None:
     M = np.array([_mercator(k[3]) for k in kotwice])
     miasto = np.array([k[4] for k in kotwice])
     napis = np.array([k[5] for k in kotwice])
-    prog = np.where(miasto, 30.0, 160.0)
+    prog = np.where(miasto, 24.0, 160.0) * (h / 1080)
     waga = np.where(miasto, 1.0, 0.3)
-
-    def zgodne(s, tx, ty):
-        """Dla każdego napisu najwyżej jedno miejsce: to, które najlepiej pasuje do ułożenia mapy."""
-        blad = np.hypot(s * L + tx - X, -s * M + ty - Y)
-        najl = {}
-        for i in np.nonzero(blad <= prog)[0]:
-            if napis[i] not in najl or blad[i] < blad[najl[napis[i]]]:
-                najl[napis[i]] = i
-        return list(najl.values())
-
-    # Część napisów to pomyłki albo miasta o tej samej nazwie gdzie indziej, więc szukamy takiego ułożenia mapy
-    # (skala i przesunięcie), z którym zgadza się najwięcej napisów: próbujemy pary i liczymy pasujące.
     import random
-    pary = [(i, j) for i in range(len(kotwice)) for j in range(i + 1, len(kotwice)) if napis[i] != napis[j]]
-    if len(pary) > 5000:
-        pary = random.Random(1).sample(pary, 5000)
-    najl = None
-    for i, j in pary:
-        dx, dl = X[j] - X[i], L[j] - L[i]
-        dy, dm = Y[j] - Y[i], M[j] - M[i]
-        if abs(dx) >= abs(dy):
-            if abs(dl) < 1e-6 or abs(dx) < 40:
+
+    def szukaj(X, Y, ile_par):
+        """Najlepsze ułożenie mapy (skala i przesunięcie): próbujemy pary napisów i liczymy, ile pozostałych do nich pasuje."""
+        pary = [(i, j) for i in range(len(kotwice)) for j in range(i + 1, len(kotwice)) if napis[i] != napis[j]]
+        if len(pary) > ile_par:
+            pary = random.Random(1).sample(pary, ile_par)
+        najl = None
+        for i, j in pary:
+            dx, dl = X[j] - X[i], L[j] - L[i]
+            dy, dm = Y[j] - Y[i], M[j] - M[i]
+            if abs(dx) >= abs(dy):
+                if abs(dl) < 1e-6 or abs(dx) < 40:
+                    continue
+                sk = dx / dl
+            else:
+                if abs(dm) < 1e-6 or abs(dy) < 40:
+                    continue
+                sk = -dy / dm
+            if not (150 < sk < 5e6):
                 continue
-            s = dx / dl
-        else:
-            if abs(dm) < 1e-6 or abs(dy) < 40:
-                continue
-            s = -dy / dm
-        if not (150 < s < 5e6):
-            continue
-        tx, ty = X[i] - s * L[i], Y[i] + s * M[i]
-        blad = np.hypot(s * L + tx - X, -s * M + ty - Y)
-        ok = blad <= prog
-        ocena = sum(waga[k] for k in {napis[k]: k for k in np.nonzero(ok)[0]}.values())
-        if najl is None or ocena > najl[0]:
-            najl = (ocena, s, tx, ty)
+            tx, ty = X[i] - sk * L[i], Y[i] + sk * M[i]
+            ok = np.nonzero(np.hypot(sk * L + tx - X, -sk * M + ty - Y) <= prog)[0]
+            jedne = {napis[k]: k for k in ok}.values()         # jeden napis liczy się raz
+            ocena = sum(waga[k] for k in jedne)
+            if najl is None or ocena > najl[0]:
+                najl = (ocena, sk, tx, ty, sum(1 for k in jedne if miasto[k]))
+        return najl
+
+    najl = szukaj(X, Y, 5000)
     if najl is None:
         return {"kod": None, "pewny": False, "odleglosc_km": odleglosc, "miasta": 0, "powod": "nie udało się dopasować mapy"}
-    wybrane = zgodne(*najl[1:])
+    # Próba kontrolna: te same nazwy z pomieszanymi położeniami na ekranie. Pokazuje, ile napisów „zgadza się” przez czysty przypadek
+    # (baza ma ponad 200 tys. miejscowości, więc kilka zawsze się znajdzie) — prawdziwy wynik musi być wyraźnie lepszy.
+    kolejnosc = sorted(set(napis.tolist()))
+    pomieszane = kolejnosc[:]
+    random.Random(7).shuffle(pomieszane)
+    gdzie = {a: b for a, b in zip(kolejnosc, pomieszane)}
+    pierwszy = {n: int(np.nonzero(napis == n)[0][0]) for n in kolejnosc}
+    Xp = np.array([X[pierwszy[gdzie[n]]] for n in napis.tolist()])
+    Yp = np.array([Y[pierwszy[gdzie[n]]] for n in napis.tolist()])
+    kontrola = szukaj(Xp, Yp, 2500)
+    szum = kontrola[4] if kontrola else 0
+
+    def zgodne(sk, tx, ty):
+        """Dla każdego napisu najwyżej jedno miejsce: to, które najlepiej pasuje do ułożenia mapy."""
+        blad = np.hypot(sk * L + tx - X, -sk * M + ty - Y)
+        naj = {}
+        for i in np.nonzero(blad <= prog)[0]:
+            if napis[i] not in naj or blad[i] < blad[naj[napis[i]]]:
+                naj[napis[i]] = i
+        return list(naj.values())
+
+    wybrane = zgodne(*najl[1:4])
     if len(wybrane) < 2:
         return {"kod": None, "pewny": False, "odleglosc_km": odleglosc, "miasta": 0, "powod": "nie udało się dopasować mapy"}
     A, B = [], []
@@ -328,14 +361,18 @@ def _odczytaj(img, typy_modelu: list[str] | None = None) -> dict | None:
     ile_miast = int(sum(1 for i in wybrane if miasto[i]))
     lon = math.degrees((pin[0] - tx) / s)
     lat = math.degrees(2 * math.atan(math.exp((ty - pin[1]) / s)) - math.pi / 2)
+    silnik.log(f"dopasowanie mapy: zgodnych miast {ile_miast}, w próbie kontrolnej {szum}, punkt {lat:.2f}, {lon:.2f}")
+    if not (-85 <= lat <= 85 and -180 <= lon <= 180):
+        return {"kod": None, "pewny": False, "odleglosc_km": odleglosc, "miasta": ile_miast, "powod": "nie udało się dopasować mapy"}
     kod, odl = kraj_w_punkcie(lon, lat)
     znany = bool(kod) and silnik_lokalny.kraj(kod) is not None
     if not znany:
         return {"kod": None, "pewny": False, "lat": lat, "lon": lon, "odleglosc_km": odleglosc, "miasta": ile_miast, "powod": "miejsce poza krajami z bazy"}
-    if odl == 0 and ile_miast >= 4:
+    pewne_miasta = ile_miast >= max(4, szum + 3)        # wyraźnie więcej zgodnych miast, niż wychodzi z przypadku
+    if odl == 0 and pewne_miasta:
         pewny, powod = True, f"pinezka w granicach kraju, {ile_miast} miast na mapie"
-    elif kod in typy_modelu[:3] and odl < 8:
+    elif kod in typy_modelu[:3] and odl < 8 and (ile_miast > szum or ile_miast <= 1):
         pewny, powod = True, "zgodne z typem modelu"
     else:
         pewny, powod = False, "wynik przybliżony — potwierdź"
-    return {"kod": kod, "pewny": pewny, "lat": lat, "lon": lon, "dokladne": ile_miast >= 4, "odleglosc_km": odleglosc, "miasta": ile_miast, "powod": powod}
+    return {"kod": kod, "pewny": pewny, "lat": lat, "lon": lon, "dokladne": pewne_miasta, "odleglosc_km": odleglosc, "miasta": ile_miast, "powod": powod}

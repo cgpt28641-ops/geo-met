@@ -228,7 +228,7 @@ class Asystent:
     def _sledz_okno(self) -> None:
         """Zapamiętuje położenie okienek asystenta (główne i pytanie o kraj), żeby móc je zamalować na zrzucie."""
         try:
-            okna = [self.root] + ([self.okno_rundy] if self.okno_rundy is not None and self.okno_rundy.winfo_exists() else [])
+            okna = [self.root] + [o for o in (self.okno_rundy, getattr(self, "okno_ustawien", None)) if o is not None and o.winfo_exists()]
             self.prostokaty = [(o.winfo_rootx() - 10, o.winfo_rooty() - 40, o.winfo_rootx() + o.winfo_width() + 10, o.winfo_rooty() + o.winfo_height() + 10) for o in okna]
         except Exception:
             pass
@@ -428,19 +428,23 @@ class Asystent:
 
     def _petla_zrzutow(self) -> None:
         ostatni_log, bledy, z_rzedu = 0.0, 0, 0
+        podsum_z_rzedu, zalogowany = 0, self.ostatni_ekran
+        zapas, zapas_czas = [], 0.0          # widoki skasowane przy „nowej rundzie” — na wypadek, gdyby to jednak nie była nowa runda
         while True:
             try:
                 if not self.zajety:
                     zrzut = self._zrzut()
                     ekran = self._rozpoznaj_ekran(zrzut)
-                    if ekran != self.ostatni_ekran:
-                        silnik.log(f"ekran: {self.ostatni_ekran} → {ekran} · zrzut {zrzut.size[0]}x{zrzut.size[1]} · widoków {len(self.widoki)} · pojedynek {self._pojedynek(zrzut)}")
+                    if ekran != zalogowany:      # każdą zmianę ekranu zapisujemy raz (także otwarcie mapy w rundzie)
+                        silnik.log(f"ekran: {zalogowany} → {ekran} · zrzut {zrzut.size[0]}x{zrzut.size[1]} · widoków {len(self.widoki)} · pojedynek {self._pojedynek(zrzut)}")
+                        zalogowany = ekran
                     elif time.time() - ostatni_log > 30:   # co pół minuty znak życia
                         ostatni_log = time.time()
                         silnik.log(f"pętla zrzutów działa · ekran {ekran} · widoków {len(self.widoki)} · {self.pamiec or 'karta: brak odczytu'}")
                     if ekran == "runda":
                         z_rzedu += 1
                         if self.runda_zamknieta and z_rzedu >= 2:
+                            zapas, zapas_czas = list(self.widoki), time.time()
                             self.widoki.clear()   # po wyniku lub podsumowaniu zaczęła się nowa runda
                             self.runda_zamknieta = False
                             silnik.log("nowa runda — widoki wyczyszczone")
@@ -450,9 +454,17 @@ class Asystent:
                             self.widoki.append((zrzut, odcisk))
                     else:
                         z_rzedu = 0
-                    if ekran == "podsumowanie":
+                    # Fioletowy ekran trwa sekundę–dwie także tuż przed wynikiem rundy (przejście), więc rundę zamyka dopiero
+                    # dłuższe podsumowanie (4 zrzuty z rzędu), a nie pojedyncze mignięcie.
+                    podsum_z_rzedu = podsum_z_rzedu + 1 if ekran == "podsumowanie" else 0
+                    if podsum_z_rzedu >= 4:
                         self.runda_zamknieta = True
                     elif ekran == "wynik" and self.ostatni_ekran != "wynik" and not self.runda_zamknieta:
+                        if len(self.widoki) < 2 and len(zapas) >= 2 and time.time() - zapas_czas < 40:
+                            # widoki skasowano chwilę temu przez pomyłkę (mignięcie ekranu przed wynikiem) — przywracamy je
+                            silnik.log(f"przywracam {len(zapas)} widoków skasowanych {time.time() - zapas_czas:.0f} s temu")
+                            self.widoki.extend(zapas)
+                            zapas = []
                         if self.lokalny and self.cfg.get("auto_koniec", True) and len(self.widoki) >= 2:
                             self.runda_zamknieta = True
                             silnik.log("wykryto ekran wyniku → uruchamiam lekcję")
@@ -806,6 +818,8 @@ class Asystent:
     def ustawienia(self) -> None:
         okno = tk.Toplevel(self.root)
         okno.title("Ustawienia — GeoMeta Asystent")
+        self.okno_ustawien = okno
+        okno.after(50, lambda: self._ukryj_przed_zrzutem(okno))     # inaczej asystent czytałby polskie napisy z własnych ustawień
         okno.attributes("-topmost", True)
         okno.geometry("600x900")
         ramka = ttk.Frame(okno, padding=14)
