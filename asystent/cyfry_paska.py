@@ -48,10 +48,9 @@ def _grupa_cyfr(a):
     if not wysokosci:
         return None
     najw = max(wysokosci)
-    gora = min(z[2] for z in znaki if z[3] - z[2] >= 0.8 * najw)
 
-    def duzy(z):
-        return z[3] - z[2] >= 0.8 * najw
+    def duzy(z):       # cyfra: wysoka jak inne cyfry, ale nie wyższa (flaga i przełącznik w nowszym pasku są wyższe)
+        return 0.8 * najw <= z[3] - z[2] <= 20
     i = 0
     while i < len(znaki):
         if not duzy(znaki[i]):
@@ -68,6 +67,7 @@ def _grupa_cyfr(a):
         dalej = znaki[j][0] - male[-1][1] if male and j < len(znaki) else 999
         szer = (male[-1][1] - male[0][0]) / najw if male else 0
         if male and dalej > 1.2 * najw and szer >= 0.4:
+            gora = min(z[2] for z in g)          # górna linia cyfr tej liczby (nie innych elementów paska)
             m = a[gora:gora + WYS + 4, g[0][0]:g[-1][1]]
             if m.shape[0] < WYS + 4:
                 m = np.vstack([m, np.zeros((WYS + 4 - m.shape[0], m.shape[1]), bool)])
@@ -80,15 +80,27 @@ def _kawalki(m):
     """Dzieli liczbę na kawałki cyfr rozdzielone kropką dziesiętną („5.8”) albo przecinkiem tysięcy („1,448”).
     Zwraca listę (maska kawałka, znak po nim: "." / "," / None)."""
     import numpy as np
-    tylko_dol = m[10:].any(axis=0) & ~m[:10].any(axis=0)       # kolumny, w których biel jest tylko przy dolnej linii cyfr
     rozdz, start = [], None
+    # przecinek tysięcy: jedyny znak z ogonkiem pod dolną linią cyfr (bywa zrośnięty z sąsiednią cyfrą, więc szukamy po ogonku)
+    ogonek = m[WYS:].any(axis=0)
+    for x, jest in enumerate(list(ogonek) + [False]):
+        if jest and start is None:
+            start = x
+        elif not jest and start is not None:
+            if start >= 6:
+                rozdz.append((max(0, start - 1), min(m.shape[1], x + 3), ","))
+            start = None
+    # kropka dziesiętna: kolumny, w których biel jest tylko przy dolnej linii cyfr (i nie ma ogonka)
+    tylko_dol = m[10:].any(axis=0) & ~m[:10].any(axis=0)
+    start = None
     for x, jest in enumerate(list(tylko_dol) + [False]):
         if jest and start is None:
             start = x
         elif not jest and start is not None:
-            if 3 <= x - start <= 7 and start >= 7:
-                rozdz.append((start, x, "," if m[WYS:, start:x].any() else "."))      # przecinek ma ogonek pod linią, kropka nie
+            if 3 <= x - start <= 7 and start >= 7 and not any(s0 < x and start < s1 for s0, s1, _ in rozdz):
+                rozdz.append((start, x, "."))
             start = None
+    rozdz.sort()
     wynik, poz = [], 0
     for s0, s1, znak in rozdz + [(m.shape[1], m.shape[1], None)]:
         kaw = m[:WYS, poz:s0]

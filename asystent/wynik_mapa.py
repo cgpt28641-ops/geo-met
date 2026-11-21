@@ -43,12 +43,67 @@ def pinezka(img):
     return float(xs[blisko].mean()), float(ys[blisko].mean())
 
 
+def pinezka_czerwona(img):
+    """Nowszy wygląd poprawnego miejsca: biała „łezka” z czerwoną obwódką i czerwoną kropką. Zwraca czubek (dół) łezki albo None."""
+    try:
+        import cv2
+        import numpy as np
+    except Exception:
+        return None
+    a = np.asarray(img.convert("RGB")).astype(np.int16)
+    h, w = a.shape[:2]
+    sk = h / 1080
+    r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    czerw = ((r > 150) & (g < 75) & (b < 95) & (r > g + 90)).astype(np.uint8)
+    czerw[int(h * 0.90):] = 0            # dolny pasek (flaga, krzyżyk)
+    n, _, st, _ = cv2.connectedComponentsWithStats(czerw, connectivity=8)
+    najl = None
+    for i in range(1, n):
+        x, y, bw, bh, pole = (int(v) for v in st[i])
+        if not (26 * sk <= bw <= 46 * sk and 30 * sk <= bh <= 60 * sk and pole >= 250 * sk * sk):
+            continue
+        srodek = a[y + bh // 6:y + bh * 2 // 3, x + bw // 4:x + bw * 3 // 4]
+        biale = float((srodek.min(axis=2) > 225).mean())
+        if biale < 0.45:                 # w środku łezki musi być biało
+            continue
+        if najl is None or biale > najl[0]:
+            najl = (biale, x + bw / 2, float(y + bh))
+    return (najl[1], najl[2]) if najl else None
+
+
 def _srodek_kraju(kod: str):
     ringi = [r for k, rs in mapa._wczytaj()["kraje"] if k == kod for r in rs]
     if not ringi:
         return None
     ring = max(ringi, key=lambda r: len(r[0]))[0]
     return sum(p[0] for p in ring) / len(ring), sum(p[1] for p in ring) / len(ring)
+
+
+def blisko_kraju(kod: str, lon: float, lat: float, stopnie: float = 0.6) -> bool:
+    """Czy punkt leży w danym kraju albo tuż przy jego granicy (kontury na mapie są uproszczone, więc punkt przy granicy bywa po złej stronie)."""
+    skala = math.cos(math.radians(lat))
+    for k, ringi in mapa._wczytaj()["kraje"]:
+        if k != kod:
+            continue
+        for ring, (a, b, c, d) in ringi:
+            if not (a - 1 <= lon <= c + 1 and b - 1 <= lat <= d + 1):
+                continue
+            wew, j = False, len(ring) - 1
+            for i in range(len(ring)):
+                xi, yi = ring[i]
+                xj, yj = ring[j]
+                if (yi > lat) != (yj > lat) and lon < (xj - xi) * (lat - yi) / (yj - yi) + xi:
+                    wew = not wew
+                # odległość od odcinka granicy
+                dx, dy = (xj - xi) * skala, yj - yi
+                px, py = (lon - xi) * skala, lat - yi
+                t = max(0.0, min(1.0, (px * dx + py * dy) / (dx * dx + dy * dy))) if dx or dy else 0.0
+                if math.hypot(px - t * dx, py - t * dy) <= stopnie:
+                    return True
+                j = i
+            if wew:
+                return True
+    return False
 
 
 def kraj_w_punkcie(lon: float, lat: float):
@@ -277,27 +332,59 @@ def _duze_miasto(odczyty, typy_modelu: list[str]):
 
 
 def _odczytaj(img, typy_modelu: list[str] | None = None) -> dict | None:
-    """Najpierw dokładne dopasowanie mapy po nazwach miejscowości; gdy się nie uda, a strzał był blisko (mapa pokazuje ulice) — nazwa dużego miasta w napisach."""
+    """Kolejno: flaga kraju z dolnego paska (nowszy układ — gra sama podaje kraj), dokładne dopasowanie mapy po nazwach
+    miejscowości, a gdy strzał był blisko i mapa pokazuje ulice — nazwa dużego miasta w napisach."""
+    typy_modelu = typy_modelu or []
     wynik = _odczytaj_z_ulozenia(img, typy_modelu)
-    if wynik is not None and wynik.get("pewny"):
-        return wynik
+    fl = None
+    try:
+        if silnik.pasek_wyniku(img):
+            import flaga_paska
+            fl = flaga_paska.flaga(img.convert("RGB"))
+            if fl:
+                silnik.log(f"flaga w pasku wyniku: {fl}")
+    except Exception:
+        silnik.log("BŁĄD odczytu flagi z paska", blad=True)
     odl = wynik.get("odleglosc_km") if wynik else None
-    if _ostatnie.get("odczyty") is not None and (odl is None or odl <= 100):
-        try:
-            import numpy as np
-            # do tego czytamy cały ekran (nie tylko okolicę pinezki), bo nazwa miasta może być w dowolnym napisie
-            with_all = silnik_lokalny.czytnik().readtext(np.asarray(img.convert("RGB")))
-            m = _duze_miasto(with_all, typy_modelu or [])
-        except Exception:
-            silnik.log("BŁĄD szukania nazwy miasta w napisach mapy", blad=True)
-            m = None
-        if m:
-            kod, lat, lon, nazwa, ile, pewne_miejsce = m
-            silnik.log(f"mapa przybliżona do ulic: w napisach {ile}× nazwa miasta {nazwa} ({kod}), miejsce pewne: {pewne_miejsce}")
-            if pewne_miejsce:
-                return {"kod": kod, "pewny": True, "lat": lat, "lon": lon, "dokladne": True, "odleglosc_km": odl, "miasta": 0,
-                        "powod": f"mapa pokazuje ulice; w napisach {ile}× nazwa miasta {nazwa}"}
-            return {"kod": kod, "pewny": True, "dokladne": False, "odleglosc_km": odl, "miasta": 0, "powod": "mapa pokazuje ulice; kraj z nazw w napisach"}
+    if not (wynik is not None and wynik.get("pewny") and (not fl or wynik.get("kod") in fl["kandydaci"])):
+        # mapy nie udało się pewnie dopasować (albo wyszedł inny kraj niż na fladze) — przy bliskim strzale szukamy nazwy dużego miasta
+        if _ostatnie.get("odczyty") is not None and (fl is not None or odl is None or odl <= 100):
+            try:
+                import numpy as np
+                # do tego czytamy cały ekran (nie tylko okolicę pinezki), bo nazwa miasta może być w dowolnym napisie
+                with_all = silnik_lokalny.czytnik().readtext(np.asarray(img.convert("RGB")))
+                m = _duze_miasto(with_all, fl["kandydaci"] if fl else typy_modelu)
+            except Exception:
+                silnik.log("BŁĄD szukania nazwy miasta w napisach mapy", blad=True)
+                m = None
+            if m and (not fl or m[0] in fl["kandydaci"]) and (fl is not None or odl is not None):
+                kod, lat, lon, nazwa, ile, pewne_miejsce = m
+                silnik.log(f"mapa przybliżona do ulic: w napisach {ile}× nazwa miasta {nazwa} ({kod}), miejsce pewne: {pewne_miejsce}")
+                if pewne_miejsce:
+                    wynik = {"kod": kod, "pewny": True, "lat": lat, "lon": lon, "dokladne": True, "odleglosc_km": odl, "miasta": 0,
+                             "powod": f"mapa pokazuje ulice; w napisach {ile}× nazwa miasta {nazwa}"}
+                else:
+                    wynik = {"kod": kod, "pewny": True, "dokladne": False, "odleglosc_km": odl, "miasta": 0, "powod": "mapa pokazuje ulice; kraj z nazw w napisach"}
+    if fl:
+        # Flaga to odpowiedź samej gry, więc kraj bierzemy z niej. Przy bardzo podobnych flagach (Włochy/Irlandia)
+        # rozstrzyga dopasowanie mapy, potem typ modelu.
+        z_mapy = wynik.get("kod") if wynik else None
+        if z_mapy not in fl["kandydaci"] and wynik and wynik.get("lat") is not None and wynik.get("miasta", 0) >= 4:
+            # mapa dała punkt w sąsiednim kraju, ale tuż przy granicy kraju z flagi — to ten sam punkt, kraj bierzemy z flagi
+            przy = [k for k in fl["kandydaci"] if blisko_kraju(k, wynik["lon"], wynik["lat"])]
+            if przy:
+                wynik["kod"] = z_mapy = przy[0]
+                wynik["dokladne"] = True
+                wynik["powod"] = f"punkt przy granicy, {wynik['miasta']} miast na mapie"
+        if z_mapy in fl["kandydaci"]:
+            kod = z_mapy
+        else:
+            kod = next((k for k in typy_modelu[:3] if k in fl["kandydaci"]), fl["kod"])
+        if wynik is None or z_mapy != kod:       # miejsce z mapy nie zgadza się z flagą — zostawiamy sam kraj
+            wynik = {"kod": kod, "dokladne": False, "odleglosc_km": odl, "miasta": 0}
+        wynik["pewny"] = len(fl["kandydaci"]) == 1 or z_mapy == kod or kod in typy_modelu[:3]
+        wynik["powod"] = "flaga kraju w pasku wyniku" + (f"; {wynik['powod']}" if wynik.get("powod") and wynik.get("lat") is not None else "")
+        wynik["trafiony"] = fl["trafiony"]
     return wynik
 
 
@@ -314,6 +401,8 @@ def _odczytaj_z_ulozenia(img, typy_modelu: list[str] | None = None) -> dict | No
     pin = pinezka(img)
     if pin and not (h * gora < pin[1] < h * 0.97 and w * 0.02 < pin[0] < w * 0.98):
         pin = None
+    if not pin and not pojedynek:
+        pin = pinezka_czerwona(img)      # nowszy układ zwykłej gry: czerwona „łezka” zamiast czarnego kółka z flagą
     rgb = img.convert("RGB")
     czyt = silnik_lokalny.czytnik()
     # Czytamy tylko okolicę pinezki (tam są napisy potrzebne do ustalenia miejsca) — to kilka razy szybsze niż cały ekran.

@@ -164,6 +164,23 @@ def czy_mapa(img: Image.Image) -> bool:
         return False
 
 
+def pasek_wyniku(img: Image.Image) -> bool:
+    """Czy na dole ekranu jest pasek wyniku zwykłej gry: ciemnofioletowa „pigułka” z zielonym przyciskiem NEXT / VIEW RESULTS.
+    To najpewniejszy znak końca rundy w zwykłej grze — nie zależy od wyglądu pinezki ani mapy."""
+    try:
+        import numpy as np
+        w, h = img.size
+        rgb = img.convert("RGB")
+        a = np.asarray(rgb.crop((int(w * 0.36), int(h * 0.925), int(w * 0.56), int(h * 0.975)))).astype(np.int16)
+        r, g, b = a[..., 0], a[..., 1], a[..., 2]
+        fiolet = ((r < 80) & (g < 60) & (b > 40) & (b < 150) & (b > r + 15)).mean()
+        z = np.asarray(rgb.crop((int(w * 0.634), int(h * 0.925), int(w * 0.675), int(h * 0.975)))).astype(np.int16)
+        zielony = ((z[..., 1] > 130) & (z[..., 0] < 170) & (z[..., 2] < 110) & (z[..., 1] > z[..., 0] + 25)).mean()
+        return bool(fiolet > 0.6 and zielony > 0.35)
+    except Exception:
+        return False
+
+
 def rodzaj_ekranu(img: Image.Image) -> str:
     """Rozpoznaje po kolorach: 'wynik' (fioletowy pasek u góry + mapa), 'podsumowanie' (cały fioletowy),
     'mapa' (duża mapa bez paska — trzeba sprawdzić pinezkę, żeby odróżnić wynik od mapy otwartej w rundzie) albo 'runda'."""

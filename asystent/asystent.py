@@ -418,15 +418,15 @@ class Asystent:
                     silnik.log("BŁĄD analizy w tle", blad=True)
 
     def _rozpoznaj_ekran(self, zrzut) -> str:
-        """'runda', 'wynik', 'podsumowanie' albo 'mapa' (mapa otwarta w trakcie rundy — taki zrzut pomijamy)."""
+        """'runda', 'wynik', 'podsumowanie' albo 'mapa' (mapa otwarta w trakcie rundy — taki zrzut pomijamy).
+
+        Koniec rundy poznajemy po stałych elementach ekranu wyniku: w pojedynku to fioletowy pasek u góry (robi to rodzaj_ekranu),
+        w zwykłej grze — pasek na dole z czasem, odległością i zielonym przyciskiem NEXT. Wygląd pinezki zmienia się między
+        trybami gry, więc na nim się już nie opieramy.
+        """
         ekran = silnik.rodzaj_ekranu(zrzut)
-        if ekran in ("mapa", "runda"):
-            # Ekran wyniku w zwykłej grze to mapa na cały ekran z pinezką poprawnego miejsca (bez fioletowego paska).
-            # Pinezka bywa w dowolnym miejscu, także przy górnej krawędzi; mapa bywa zielona, beżowa albo szara.
-            pin = wynik_mapa.pinezka(zrzut)
-            w, h = zrzut.size
-            if pin and h * 0.05 < pin[1] < h * 0.97 and w * 0.02 < pin[0] < w * 0.98 and (ekran == "mapa" or silnik.kolory_mapy_szerokie(zrzut) >= 0.4):
-                return "wynik"
+        if ekran in ("mapa", "runda") and silnik.pasek_wyniku(zrzut):
+            return "wynik"
         return ekran
 
     def _petla_zrzutow(self) -> None:
@@ -774,7 +774,8 @@ class Asystent:
         if ok is None and self.ostatnia_lekcja and time.time() - self.ostatnia_lekcja[0] < 180 and self.ostatnia_lekcja[1:] == znak_rundy:
             silnik.log("ta sama runda co przed chwilą (ten sam kraj, odległość i punkt) — nie zapisuję jej drugi raz")
             return
-        lekcja = silnik_lokalny.lekcja(widoki, kod, ok, odczyt, typy, porady)
+        trafiony = ok if ok is not None else (odczyt or {}).get("trafiony")      # ✓/✗ przy fladze w pasku wyniku
+        lekcja = silnik_lokalny.lekcja(widoki, kod, trafiony, odczyt, typy, porady)
         wpis = silnik.zapisz_runde(lekcja, widoki, wynik)
         self.ostatnia_lekcja = (time.time(), *znak_rundy)
         self.niepewny = None
