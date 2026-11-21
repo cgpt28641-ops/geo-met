@@ -116,6 +116,23 @@ def baza_miast():
 
 
 def _odleglosc_z_paska(rgb, czyt):
+    """Zwykła gra: odległość z dolnego paska. Najpierw własne rozpoznawanie cyfr (wzorce czcionki, pewne i szybkie);
+    gdy cyfry wyglądają inaczej niż wzorce albo ekran ma inną rozdzielczość — zwykłe czytanie tekstu."""
+    try:
+        if rgb.size[1] == 1080:
+            import cyfry_paska
+            wartosc, pewnosc, opis = cyfry_paska.odleglosc(rgb)
+            silnik.log(f"dolny pasek (odległość, wzorce cyfr): {opis} · pewność {pewnosc:.2f}")
+            if wartosc is not None and pewnosc >= 0.85 and wartosc <= 20100:
+                return wartosc
+            if wartosc is not None:
+                silnik.log("cyfry wyglądają inaczej niż znane wzorce — próbuję zwykłego czytania tekstu")
+    except Exception:
+        silnik.log("BŁĄD rozpoznawania cyfr z paska", blad=True)
+    return _odleglosc_z_paska_ocr(rgb, czyt)
+
+
+def _odleglosc_z_paska_ocr(rgb, czyt):
     """Zwykła gra: odległość z dolnego paska (TIME · DISTANCE · SCORE), np. „498 km”. Zwraca kilometry albo None.
 
     W pasku są trzy liczby, a ich położenie zmienia się z długością napisów. Odległość poznajemy po tym, że jako jedyna
@@ -212,7 +229,79 @@ def odczytaj(img, typy_modelu: list[str] | None = None) -> dict | None:
         return _odczytaj(img, typy_modelu)
 
 
+_duze: dict = {}
+_ostatnie: dict = {}
+ULICE = {"r", "rua", "av", "ave", "avenida", "avenue", "calle", "c", "cl", "rue", "via", "viale", "ul", "ulica", "str", "strasse", "street", "st", "road", "rd", "blvd",
+         "boulevard", "carrer", "strada", "leof", "odos", "jalan", "jl", "calea", "bulevardul", "rodovia", "carretera", "ruta", "highway", "hwy"}
+
+
+def _duze_miasto(odczyty, typy_modelu: list[str]):
+    """Mapa przybliżona do poziomu ulic nie ma nazw miast, ale nazwa dużego miasta zwykle siedzi w innych napisach
+    („Museu de Arte de São Paulo”, „Athens Customs Office”). Szukamy takich nazw w środku napisów.
+    Zwraca (kraj, szerokość, długość, nazwa, ile razy) albo None."""
+    baza_miast()
+    if not _surowa:
+        return None
+    if not _duze:      # nazwy ok. 5 tys. największych miast świata (baza jest ułożona od największych)
+        for klucz, ids in _surowa["k"].items():
+            if len(klucz) >= 5 and ids[0] < 5000 and klucz not in silnik_lokalny.NIE_MIASTA:
+                _duze[klucz] = ids[0]
+    licznik: dict = {}
+    for pole, tekst, pw in odczyty:
+        if pw < 0.4:
+            continue
+        slowa = [x for x in re.split(r"[^\w]+", silnik_lokalny._uprosc(tekst)) if x]
+        if not slowa or slowa[0] in ULICE:          # nazwy ulic często noszą nazwy miast („Rua Lisboa”) — pomijamy
+            continue
+        trafione = set()
+        for n in (3, 2, 1):
+            for i in range(len(slowa) - n + 1):
+                fraza = " ".join(slowa[i:i + n])
+                if fraza in _duze:
+                    trafione.add(_duze[fraza])
+        for idx in trafione:
+            licznik[idx] = licznik.get(idx, 0) + 1
+    if not licznik:
+        return None
+    kolejnosc = sorted(licznik.items(), key=lambda kv: (-kv[1], kv[0]))
+    idx, ile = kolejnosc[0]
+    drugi = kolejnosc[1][1] if len(kolejnosc) > 1 else 0
+    kod, lat, lon = _surowa["m"][idx]
+    if silnik_lokalny.kraj(kod) is None:
+        return None
+    if ile >= 2 or kod in typy_modelu[:3]:
+        nazwa = next((k for k, ids in _surowa["k"].items() if ids and ids[0] == idx), "").title()
+        # miejsce podajemy tylko wtedy, gdy jedno miasto wyraźnie wygrywa (dzielnice bywają imiennikami innych miast, np. Belém w São Paulo)
+        return kod, lat, lon, nazwa, ile, ile >= drugi + 2 or (ile >= 2 and drugi == 0) or (ile == 1 and drugi == 0)
+    return None
+
+
 def _odczytaj(img, typy_modelu: list[str] | None = None) -> dict | None:
+    """Najpierw dokładne dopasowanie mapy po nazwach miejscowości; gdy się nie uda, a strzał był blisko (mapa pokazuje ulice) — nazwa dużego miasta w napisach."""
+    wynik = _odczytaj_z_ulozenia(img, typy_modelu)
+    if wynik is not None and wynik.get("pewny"):
+        return wynik
+    odl = wynik.get("odleglosc_km") if wynik else None
+    if _ostatnie.get("odczyty") is not None and (odl is None or odl <= 100):
+        try:
+            import numpy as np
+            # do tego czytamy cały ekran (nie tylko okolicę pinezki), bo nazwa miasta może być w dowolnym napisie
+            with_all = silnik_lokalny.czytnik().readtext(np.asarray(img.convert("RGB")))
+            m = _duze_miasto(with_all, typy_modelu or [])
+        except Exception:
+            silnik.log("BŁĄD szukania nazwy miasta w napisach mapy", blad=True)
+            m = None
+        if m:
+            kod, lat, lon, nazwa, ile, pewne_miejsce = m
+            silnik.log(f"mapa przybliżona do ulic: w napisach {ile}× nazwa miasta {nazwa} ({kod}), miejsce pewne: {pewne_miejsce}")
+            if pewne_miejsce:
+                return {"kod": kod, "pewny": True, "lat": lat, "lon": lon, "dokladne": True, "odleglosc_km": odl, "miasta": 0,
+                        "powod": f"mapa pokazuje ulice; w napisach {ile}× nazwa miasta {nazwa}"}
+            return {"kod": kod, "pewny": True, "dokladne": False, "odleglosc_km": odl, "miasta": 0, "powod": "mapa pokazuje ulice; kraj z nazw w napisach"}
+    return wynik
+
+
+def _odczytaj_z_ulozenia(img, typy_modelu: list[str] | None = None) -> dict | None:
     """Zwraca {kod, pewny, lat, lon, miasta, odleglosc_km, powod} albo None, gdy nie da się nic ustalić."""
     import numpy as np
     typy_modelu = typy_modelu or []
@@ -237,6 +326,7 @@ def _odczytaj(img, typy_modelu: list[str] | None = None) -> dict | None:
     if pojedynek:   # pasek z odległościami („66 km | 146 km”) pod wynikiem rundy
         px0, py0 = int(w * 0.30), int(h * 0.17)
         odczyty += [([[q[0] + px0, q[1] + py0] for q in pole], t, pw) for pole, t, pw in czyt.readtext(np.asarray(rgb.crop((px0, py0, int(w * 0.70), int(h * 0.27)))))]
+    _ostatnie["odczyty"] = odczyty
     silnik.log(f"mapa wyniku: zrzut {w}x{h} · pinezka {pin} · czytany obszar {x0},{y0}–{x1},{y1} · odczytane napisy ({len(odczyty)}): "
                + " | ".join(f"{t} [{int(pole[0][0])},{int(pole[0][1])}]" for pole, t, pw in odczyty[:60]))
 
