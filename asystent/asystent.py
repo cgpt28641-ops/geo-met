@@ -52,6 +52,9 @@ class Asystent:
         self.zajety = False
         self.ostatni_ekran = "runda"
         self.zrzuty_wyniku: list = []  # zrzuty ekranu wyniku złapane przez pętlę (ostatni element None = komplet)
+        self.lekcja_ruszyla = False    # czy dla zebranych właśnie widoków lekcja już wystartowała
+        self.ostatnia_lekcja = None    # (czas, kraj, odległość, punkt) — żeby ta sama runda nie zapisała się dwa razy
+        self.niepewny = None           # (czas, widoki, zrzut wyniku, odczyt, typy) z rundy, w której mapy nie udało się pewnie odczytać
         self.runda_zamknieta = False   # po wyniku/lekcji: kolejny widok z ulicy zaczyna nową rundę
         self.okno_rundy = None
 
@@ -444,7 +447,10 @@ class Asystent:
                     if ekran == "runda":
                         z_rzedu += 1
                         if self.runda_zamknieta and z_rzedu >= 2:
-                            zapas, zapas_czas = list(self.widoki), time.time()
+                            # zapas tylko wtedy, gdy dla tych widoków NIE było jeszcze lekcji (czyli mogły zostać skasowane przez pomyłkę);
+                            # po zwykłej, zakończonej rundzie stare widoki nie mogą wrócić do następnej
+                            zapas, zapas_czas = ([] if self.lekcja_ruszyla else list(self.widoki)), time.time()
+                            self.lekcja_ruszyla = False
                             self.widoki.clear()   # po wyniku lub podsumowaniu zaczęła się nowa runda
                             self.runda_zamknieta = False
                             silnik.log("nowa runda — widoki wyczyszczone")
@@ -465,8 +471,9 @@ class Asystent:
                             silnik.log(f"przywracam {len(zapas)} widoków skasowanych {time.time() - zapas_czas:.0f} s temu")
                             self.widoki.extend(zapas)
                             zapas = []
-                        if self.lokalny and self.cfg.get("auto_koniec", True) and len(self.widoki) >= 2:
+                        if self.lokalny and self.cfg.get("auto_koniec", True) and len(self.widoki) >= 1:
                             self.runda_zamknieta = True
+                            self.lekcja_ruszyla = True
                             silnik.log("wykryto ekran wyniku → uruchamiam lekcję")
                             # Zrzuty wyniku łapie ta pętla (od razu i po 3 s, gdy mapa skończy się animować), a lekcja liczy się obok.
                             # Dzięki temu szybkie przejście do następnej rundy nie gubi wyniku.
@@ -666,13 +673,19 @@ class Asystent:
         silnik.log(f"koniec rundy (lokalnie, {'sam' if auto else 'F10'}): widoków zapamiętanych {len(self.widoki)}, do analizy {len(widoki)}")
         start = time.time()
         if not auto:
+            if self.niepewny and time.time() - self.niepewny[0] < 180:
+                # chwilę temu program sam próbował odczytać tę rundę i nie był pewny — pytamy o kraj, zachowując tamten zrzut i odległość
+                _, widoki_n, wynik_n, odczyt_n, typy_n = self.niepewny
+                silnik.log("koniec rundy (F10): pytam o kraj, korzystam z odczytu sprzed chwili")
+                return self._pytaj_o_kraj(widoki_n, wynik_n, odczyt_n, typy_n)
             try:
                 wynik = self._zrzut()
             except Exception as e:
                 self.pisz([("Błąd zrzutu ekranu: ", "b"), (str(e), "")])
                 return
-            if not (self.cfg.get("auto_kraj", True) and silnik_lokalny.napisy_dostepne() and silnik.rodzaj_ekranu(wynik) in ("wynik", "mapa")):
-                silnik.log(f"koniec rundy: pytam o kraj ręcznie · auto_kraj {self.cfg.get('auto_kraj', True)} · czytanie napisów {silnik_lokalny.napisy_dostepne()} · ekran {silnik.rodzaj_ekranu(wynik)}")
+            ekran = self._rozpoznaj_ekran(wynik)
+            if not (self.cfg.get("auto_kraj", True) and silnik_lokalny.napisy_dostepne() and ekran in ("wynik", "mapa")):
+                silnik.log(f"koniec rundy: pytam o kraj ręcznie · auto_kraj {self.cfg.get('auto_kraj', True)} · czytanie napisów {silnik_lokalny.napisy_dostepne()} · ekran {ekran}")
                 return self._pytaj_o_kraj(widoki, wynik)
         self.pisz([("Czytam mapę wyniku…", "szary")])
 
@@ -698,6 +711,7 @@ class Asystent:
             if odczyt and odczyt.get("pewny"):
                 self._zrob_lekcje(widoki, wynik, odczyt["kod"], None, odczyt, typy)
             elif auto:   # bez klikania: sama informacja; F10 pozwala wpisać kraj ręcznie
+                self.niepewny = (time.time(), widoki, wynik, odczyt, typy)      # F10 skorzysta z tego zrzutu i odczytu (np. odległości)
                 czesci = [("Nie udało się pewnie odczytać kraju z mapy wyniku", "b"), (f" ({odczyt['powod']})" if odczyt and odczyt.get("powod") else "", "szary"), (".\n", "")]
                 if odczyt and odczyt.get("odleglosc_km") is not None:
                     czesci.append((f"Twoja odległość: {odczyt['odleglosc_km']} km\n", ""))
@@ -756,8 +770,15 @@ class Asystent:
     def _zrob_lekcje(self, widoki: list, wynik, kod: str, ok: bool | None, odczyt: dict | None, typy: list | None) -> None:
         """Liczy lekcję (w wątku roboczym), zapisuje rundę i pokazuje wynik."""
         porady = bool(self.cfg.get("porady", False))
+        znak_rundy = (kod, odczyt.get("odleglosc_km") if odczyt else None, (round(odczyt["lat"], 2), round(odczyt["lon"], 2)) if odczyt and odczyt.get("lat") is not None else None)
+        if ok is None and self.ostatnia_lekcja and time.time() - self.ostatnia_lekcja[0] < 180 and self.ostatnia_lekcja[1:] == znak_rundy:
+            silnik.log("ta sama runda co przed chwilą (ten sam kraj, odległość i punkt) — nie zapisuję jej drugi raz")
+            return
         lekcja = silnik_lokalny.lekcja(widoki, kod, ok, odczyt, typy, porady)
         wpis = silnik.zapisz_runde(lekcja, widoki, wynik)
+        self.ostatnia_lekcja = (time.time(), *znak_rundy)
+        self.niepewny = None
+        self.lekcja_ruszyla = True
         self.runda_zamknieta = True     # następny widok z ulicy zaczyna nową rundę (wtedy widoki się wyczyszczą)
         silnik.log(f"lekcja: kraj {kod} · potwierdzenie gracza {ok} · miejsce {lekcja.get('miejsce')!r} · odległość {lekcja.get('odleglosc_km')} · model {lekcja.get('model')} · regiony {lekcja.get('regiony')} · pliki {wpis.get('pliki')}")
         info = f"model lokalny · {silnik_lokalny.urzadzenie()} · 0 zł"
